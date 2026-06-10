@@ -8,14 +8,32 @@ echo "========== ApplicationStart started =========="
 
 cd "$APP_DIR"
 
-echo "========== Server dependency check =========="
+echo "========== Install server packages =========="
 dnf install -y gcc python3-devel postgresql15-devel || true
 
-echo "========== Ensure environment file =========="
-if [ ! -f "$ENV_FILE" ]; then
-  SECRET=$(python3 -c 'import secrets; print("django-insecure-"+secrets.token_urlsafe(50))')
+echo "========== Fix PostgreSQL auth =========="
+PG_HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" | xargs)
 
-  cat > "$ENV_FILE" <<EOF
+echo "Using pg_hba.conf: $PG_HBA"
+
+sed -i -E 's/^(host\s+all\s+all\s+127\.0\.0\.1\/32\s+).*/\1scram-sha-256/' "$PG_HBA" || true
+sed -i -E 's/^(host\s+all\s+all\s+::1\/128\s+).*/\1scram-sha-256/' "$PG_HBA" || true
+sed -i -E 's/^(local\s+all\s+all\s+).*/\1peer/' "$PG_HBA" || true
+
+systemctl restart postgresql
+
+sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='opencontractsuser'" | grep -q 1 || sudo -u postgres psql -c "CREATE USER opencontractsuser WITH PASSWORD 'Opencontracts@123';"
+sudo -u postgres psql -c "ALTER USER opencontractsuser WITH PASSWORD 'Opencontracts@123';"
+
+sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='opencontractserver'" | grep -q 1 || sudo -u postgres createdb -O opencontractsuser opencontractserver
+
+sudo -u postgres psql -d opencontractserver -c "ALTER DATABASE opencontractserver OWNER TO opencontractsuser;"
+sudo -u postgres psql -d opencontractserver -c "GRANT ALL ON SCHEMA public TO opencontractsuser;"
+
+echo "========== Ensure environment file =========="
+SECRET=$(python3 -c 'import secrets; print("django-insecure-"+secrets.token_urlsafe(50))')
+
+cat > "$ENV_FILE" <<EOF
 SECRET_KEY=$SECRET
 DJANGO_SECRET_KEY=$SECRET
 DEBUG=False
@@ -32,13 +50,12 @@ POSTGRES_PORT=5432
 REDIS_URL=redis://127.0.0.1:6379/0
 CELERY_BROKER_URL=redis://127.0.0.1:6379/0
 CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/0
+OPENAI_API_KEY=local-test-key
 EOF
-fi
-
-echo "========== Fix psycopg dependency =========="
-sed -i 's/psycopg2==2.9.12/psycopg2-binary==2.9.12/g' requirements/production.txt || true
 
 echo "========== Backend setup =========="
+sed -i 's/psycopg2==2.9.12/psycopg2-binary==2.9.12/g' requirements/production.txt || true
+
 python3 -m venv venv
 source venv/bin/activate
 
@@ -51,7 +68,7 @@ source "$ENV_FILE"
 set +a
 
 python manage.py check || true
-python manage.py migrate --noinput || true
+python manage.py migrate --noinput
 python manage.py collectstatic --noinput || true
 
 echo "========== Create backend service =========="
@@ -91,7 +108,11 @@ VITE_USE_ANALYZERS=true
 VITE_ALLOW_IMPORTS=true
 EOF
 
-npm install --legacy-peer-deps
+rm -rf node_modules
+
+npm cache clean --force || true
+npm install --legacy-peer-deps --include=dev
+npm install typescript vite --save-dev --legacy-peer-deps
 npm run build
 
 echo "========== Copy frontend build =========="
