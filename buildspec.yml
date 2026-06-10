@@ -1,0 +1,11 @@
+version: 0.2
+
+phases:
+  build:
+    commands:
+      - echo "Packaging OpenContracts/Cite project for AWS CodeDeploy"
+      - ls -la
+
+artifacts:
+  files:
+    - '**/*'
