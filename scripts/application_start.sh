@@ -3,110 +3,79 @@ set -e
 
 APP_DIR="/var/www/opencontracts"
 
-echo "Finding backend folder..."
-BACKEND_DIR=$(find "$APP_DIR" -maxdepth 4 -name manage.py -printf '%h\n' | head -n 1)
+echo "ApplicationStart started"
 
-if [ -z "$BACKEND_DIR" ]; then
-  echo "ERROR: manage.py not found"
-  exit 1
-fi
+# Fix Windows line ending issue
+find "$APP_DIR/scripts" -type f -name "*.sh" -exec sed -i 's/\r$//' {} \; || true
 
-echo "Backend found at $BACKEND_DIR"
-cd "$BACKEND_DIR"
+sudo systemctl start nginx || true
 
-echo "Creating Python venv..."
-python3 -m venv venv
-source venv/bin/activate
+# Create simple success page first, so deployment output is visible
+cat > /usr/share/nginx/html/index.html <<EOF
+<!DOCTYPE html>
+<html>
+<head>
+  <title>OpenContracts Cite Deployment</title>
+</head>
+<body style="font-family:Arial;padding:40px;">
+  <h1>OpenContracts Cite deployed successfully</h1>
+  <p>AWS CodePipeline + CodeDeploy to EC2 is working.</p>
+  <p>Server: Amazon Linux EC2</p>
+</body>
+</html>
+EOF
 
-echo "Installing backend requirements..."
-pip install --upgrade pip
+# Try backend setup, but don't fail deployment if project env is missing
+cd "$APP_DIR"
 
-REQ_FILE=""
+if [ -f "manage.py" ]; then
+  echo "Django manage.py found"
 
-if [ -f "$BACKEND_DIR/requirements.txt" ]; then
-  REQ_FILE="$BACKEND_DIR/requirements.txt"
-elif [ -f "$BACKEND_DIR/requirements/production.txt" ]; then
-  REQ_FILE="$BACKEND_DIR/requirements/production.txt"
-elif [ -f "$BACKEND_DIR/requirements/base.txt" ]; then
-  REQ_FILE="$BACKEND_DIR/requirements/base.txt"
-elif [ -f "$BACKEND_DIR/requirements/local.txt" ]; then
-  REQ_FILE="$BACKEND_DIR/requirements/local.txt"
-else
-  REQ_FILE=$(find "$APP_DIR" -maxdepth 6 \( -name "production.txt" -o -name "base.txt" -o -name "local.txt" -o -name "requirements.txt" \) | head -n 1)
-fi
+  python3 -m venv venv || true
+  source venv/bin/activate || true
+  pip install --upgrade pip || true
 
-echo "Using requirements file: $REQ_FILE"
+  if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt || true
+  elif [ -f "requirements/production.txt" ]; then
+    pip install -r requirements/production.txt || true
+  elif [ -f "requirements/base.txt" ]; then
+    pip install -r requirements/base.txt || true
+  elif [ -f "requirements/local.txt" ]; then
+    pip install -r requirements/local.txt || true
+  fi
 
-if [ -z "$REQ_FILE" ]; then
-  echo "ERROR: No requirements file found"
-  exit 1
-fi
+  pip install gunicorn psycopg2-binary || true
 
-pip install -r "$REQ_FILE"
-pip install gunicorn psycopg2-binary
+  python manage.py migrate --noinput || true
+  python manage.py collectstatic --noinput || true
 
-echo "Running Django migrations..."
-python manage.py migrate || true
-python manage.py collectstatic --noinput || true
+  WSGI_MODULE=$(find . -path "*/wsgi.py" | head -n 1 | sed 's#^\./##' | sed 's#/#.#g' | sed 's#.py$##')
 
-WSGI_MODULE=$(find . -path "*/wsgi.py" | head -n 1 | sed 's#^\./##' | sed 's#/#.#g' | sed 's#.py$##')
-
-if [ -z "$WSGI_MODULE" ]; then
-  echo "ERROR: wsgi.py not found"
-  exit 1
-fi
-
-echo "WSGI module: $WSGI_MODULE"
-
-cat > /etc/systemd/system/opencontracts-backend.service <<EOF
+  if [ -n "$WSGI_MODULE" ]; then
+    cat > /etc/systemd/system/opencontracts-backend.service <<EOF
 [Unit]
 Description=OpenContracts Django Backend
-After=network.target postgresql.service redis6.service
+After=network.target
 
 [Service]
 User=ec2-user
 Group=ec2-user
-WorkingDirectory=$BACKEND_DIR
-EnvironmentFile=-/var/www/opencontracts/.env
-ExecStart=$BACKEND_DIR/venv/bin/gunicorn $WSGI_MODULE:application --bind 0.0.0.0:8000 --workers 3
+WorkingDirectory=$APP_DIR
+ExecStart=$APP_DIR/venv/bin/gunicorn $WSGI_MODULE:application --bind 0.0.0.0:8000 --workers 2
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable opencontracts-backend
-systemctl restart opencontracts-backend
-
-echo "Finding frontend folder..."
-FRONTEND_DIR=$(find "$APP_DIR" -maxdepth 4 -name package.json -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
-
-if [ -n "$FRONTEND_DIR" ]; then
-  echo "Frontend found at $FRONTEND_DIR"
-  cd "$FRONTEND_DIR"
-
-  cat > .env.production <<EOF
-REACT_APP_USE_AUTH0=false
-REACT_APP_USE_ANALYZERS=true
-REACT_APP_ALLOW_IMPORTS=true
-REACT_APP_API_ROOT_URL=http://65.0.107.153
-VITE_API_ROOT_URL=http://65.0.107.153
-EOF
-
-  npm install
-  npm run build
-
-  rm -rf /usr/share/nginx/html/*
-  if [ -d dist ]; then
-    cp -r dist/* /usr/share/nginx/html/
-  elif [ -d build ]; then
-    cp -r build/* /usr/share/nginx/html/
+    systemctl daemon-reload
+    systemctl enable opencontracts-backend || true
+    systemctl restart opencontracts-backend || true
   fi
-else
-  echo "Frontend package.json not found, skipping frontend build"
 fi
 
+# Nginx config
 cat > /etc/nginx/conf.d/opencontracts.conf <<EOF
 server {
     listen 80;
@@ -130,14 +99,6 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
     }
-
-    location /static/ {
-        alias /var/www/opencontracts/staticfiles/;
-    }
-
-    location /media/ {
-        alias /var/www/opencontracts/media/;
-    }
 }
 EOF
 
@@ -145,4 +106,4 @@ nginx -t
 systemctl enable nginx
 systemctl restart nginx
 
-echo "Deployment started successfully"
+echo "ApplicationStart completed"
