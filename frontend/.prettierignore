@@ -1,0 +1,22 @@
+# Build outputs
+dist/
+build/
+
+# Test outputs
+playwright-report/
+test-results/
+coverage/
+
+# Dependencies
+node_modules/
+
+# Generated files
+*.min.js
+*.min.css
+public/env-config.js
+
+# Playwright cache
+playwright/.cache/
+
+# Vite cache
+.vite/

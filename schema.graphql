@@ -1,0 +1,6737 @@
+type Query {
+  me: UserType
+  userBySlug(slug: String!): UserType
+  corpusBySlugs(userSlug: String!, corpusSlug: String!): CorpusType
+  documentBySlugs(userSlug: String!, documentSlug: String!): DocumentType
+  documentInCorpusBySlugs(userSlug: String!, corpusSlug: String!, documentSlug: String!): DocumentType
+  annotations(rawTextContains: String, annotationLabelId: ID, annotationLabel_Text: String, annotationLabel_TextContains: String, annotationLabel_DescriptionContains: String, annotationLabel_LabelType: String, analysisIsnull: Boolean, documentId: ID, corpusId: ID, structural: Boolean, usesLabelFromLabelsetId: ID, createdByAnalysisIds: String, createdWithAnalyzerId: String, orderBy: String, offset: Int, before: String, after: String, first: Int, last: Int): AnnotationTypeConnection
+  bulkDocRelationshipsInCorpus(corpusId: ID!, documentId: ID!): [RelationshipType]
+  bulkDocAnnotationsInCorpus(corpusId: ID!, documentId: ID, forAnalysisIds: String, labelType: LabelType): [AnnotationType]
+  pageAnnotations(currentPage: Int, pageNumberList: String, pageContainingAnnotationWithId: ID, corpusId: ID, documentId: ID!, forAnalysisIds: String, labelType: LabelType): PageAwareAnnotationType
+  annotation(
+    """The ID of the object"""
+    id: ID!
+  ): AnnotationType
+  relationships(offset: Int, before: String, after: String, first: Int, last: Int, relationshipLabel: ID, corpusId: ID, documentId: ID): RelationshipTypeConnection
+  relationship(
+    """The ID of the object"""
+    id: ID!
+  ): RelationshipType
+  annotationLabels(offset: Int, before: String, after: String, first: Int, last: Int, description_Contains: String, text: String, text_Contains: String, labelType: AnnotationsAnnotationLabelLabelTypeChoices, usedInLabelsetId: String, usedInLabelsetForCorpusId: String, usedInAnalysisIds: String): AnnotationLabelTypeConnection
+  annotationLabel(
+    """The ID of the object"""
+    id: ID!
+  ): AnnotationLabelType
+  labelsets(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, description_Contains: String, title: String, title_Contains: String, textSearch: String, labelsetId: String): LabelSetTypeConnection
+  labelset(
+    """The ID of the object"""
+    id: ID!
+  ): LabelSetType
+  corpuses(offset: Int, before: String, after: String, first: Int, last: Int, description: String, description_Contains: String, id: ID, title_Contains: String, textSearch: String, usesLabelsetId: String, categories: [ID]): CorpusTypeConnection
+  corpus(
+    """The ID of the object"""
+    id: ID!
+  ): CorpusType
+
+  """List all corpus categories"""
+  corpusCategories(offset: Int, before: String, after: String, first: Int, last: Int, name: String, name_Contains: String, description_Contains: String): CorpusCategoryTypeConnection
+
+  """Get all folders in a corpus (flat list for tree construction)"""
+  corpusFolders(corpusId: ID!): [CorpusFolderType]
+
+  """Get a single folder by ID"""
+  corpusFolder(id: ID!): CorpusFolderType
+
+  """Get all soft-deleted documents in a corpus (trash folder view)"""
+  deletedDocumentsInCorpus(corpusId: ID!): [DocumentPathType]
+  searchCorpusesForMention(
+    """Search query to find corpuses by title or description"""
+    textSearch: String
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): CorpusTypeConnection
+  searchDocumentsForMention(
+    """Search query to find documents by title or description"""
+    textSearch: String
+
+    """Optional corpus ID to scope search to documents in specific corpus"""
+    corpusId: ID
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): DocumentTypeConnection
+  searchAnnotationsForMention(
+    """Search query to find annotations by label text or raw content"""
+    textSearch: String
+
+    """Optional corpus ID to scope search to specific corpus"""
+    corpusId: ID
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): AnnotationTypeConnection
+  searchUsersForMention(
+    """Search query to find users by username or email"""
+    textSearch: String
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): UserTypeConnection
+  documents(offset: Int, before: String, after: String, first: Int, last: Int, description: String, description_Contains: String, id: ID, companySearch: String, hasPdf: Boolean, hasAnnotationsWithIds: String, inCorpusWithId: String, inFolderId: String, hasLabelWithTitle: String, hasLabelWithId: String, textSearch: String): DocumentTypeConnection
+  document(id: String): DocumentType
+  userimports(offset: Int, before: String, after: String, first: Int, last: Int): UserImportTypeConnection
+  userimport(
+    """The ID of the object"""
+    id: ID!
+  ): UserImportType
+  userexports(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    name_Contains: String
+    id: ID
+    created_Lte: DateTime
+    started_Lte: DateTime
+    finished_Lte: DateTime
+
+    """Ordering"""
+    orderByCreated: String
+
+    """Ordering"""
+    orderByStarted: String
+
+    """Ordering"""
+    orderByFinished: String
+  ): UserExportTypeConnection
+  userexport(
+    """The ID of the object"""
+    id: ID!
+  ): UserExportType
+  assignments(offset: Int, before: String, after: String, first: Int, last: Int, assignor_Email: String, assignee_Email: String, documentId: String): AssignmentTypeConnection
+  assignment(
+    """The ID of the object"""
+    id: ID!
+  ): AssignmentType
+  gremlinEngine(
+    """The ID of the object"""
+    id: ID!
+  ): GremlinEngineType_READ
+  gremlinEngines(offset: Int, before: String, after: String, first: Int, last: Int, url: String): GremlinEngineType_READConnection
+  analyzer(
+    """The ID of the object"""
+    id: ID!
+  ): AnalyzerType
+  analyzers(offset: Int, before: String, after: String, first: Int, last: Int, id_Contains: ID, id: ID, description_Contains: String, disabled: Boolean, analyzerId: String, hostedByGremlinEngineId: String, usedInAnalysisIds: String): AnalyzerTypeConnection
+  analysis(
+    """The ID of the object"""
+    id: ID!
+  ): AnalysisType
+  analyses(offset: Int, before: String, after: String, first: Int, last: Int, analyzedCorpus_Isnull: Boolean, analysisStarted_Gte: DateTime, analysisStarted_Lte: DateTime, analysisCompleted_Gte: DateTime, analysisCompleted_Lte: DateTime, status: AnalyzerAnalysisStatusChoices, receivedCallbackResults: Boolean, analyzedCorpusId: String, analyzedDocumentId: String, searchText: String): AnalysisTypeConnection
+  fieldset(
+    """The ID of the object"""
+    id: ID!
+  ): FieldsetType
+  fieldsets(offset: Int, before: String, after: String, first: Int, last: Int, name: String, name_Contains: String, description_Contains: String): FieldsetTypeConnection
+  column(
+    """The ID of the object"""
+    id: ID!
+  ): ColumnType
+  columns(offset: Int, before: String, after: String, first: Int, last: Int, query_Contains: String, matchText_Contains: String, outputType: String, limitToLabel: String): ColumnTypeConnection
+  extract(
+    """The ID of the object"""
+    id: ID!
+  ): ExtractType
+  extracts(offset: Int, before: String, after: String, first: Int, last: Int, corpusAction_Isnull: Boolean, name: String, name_Contains: String, created_Lte: DateTime, created_Gte: DateTime, started_Lte: DateTime, started_Gte: DateTime, finished_Lte: DateTime, finished_Gte: DateTime, corpus: ID): ExtractTypeConnection
+  datacell(
+    """The ID of the object"""
+    id: ID!
+  ): DatacellType
+  datacells(offset: Int, before: String, after: String, first: Int, last: Int, dataDefinition: String, started_Lte: DateTime, started_Gte: DateTime, completed_Lte: DateTime, completed_Gte: DateTime, failed_Lte: DateTime, failed_Gte: DateTime, inCorpusWithId: String, forDocumentWithId: String): DatacellTypeConnection
+  registeredExtractTasks: GenericScalar
+  corpusStats(corpusId: ID!): CorpusStatsType
+  documentCorpusActions(documentId: ID!, corpusId: ID): DocumentCorpusActionsType
+
+  """
+  Retrieve all registered pipeline components, optionally filtered by MIME type.
+  """
+  pipelineComponents(mimetype: FileTypeEnum): PipelineComponentsType
+
+  """
+  Retrieve conversations, optionally filtered by document_id or corpus_id
+  """
+  conversations(offset: Int, before: String, after: String, first: Int, last: Int, createdAt_Gte: DateTime, createdAt_Lte: DateTime, title_Contains: String, conversationType: ConversationTypeEnum, documentId: String, corpusId: String, hasCorpus: Boolean, hasDocument: Boolean): ConversationTypeConnection
+
+  """Search conversations using vector similarity with pagination"""
+  searchConversations(
+    """Search query text"""
+    query: String!
+
+    """Filter by corpus ID"""
+    corpusId: ID
+
+    """Filter by document ID"""
+    documentId: ID
+
+    """Filter by conversation type (chat/thread)"""
+    conversationType: String
+
+    """Maximum number of results to fetch from vector store"""
+    topK: Int = 100
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): ConversationConnection
+
+  """Search messages using vector similarity"""
+  searchMessages(
+    """Search query text"""
+    query: String!
+
+    """Filter by corpus ID"""
+    corpusId: ID
+
+    """Filter by conversation ID"""
+    conversationId: ID
+
+    """Filter by message type (HUMAN/LLM/SYSTEM)"""
+    msgType: String
+
+    """Number of results to return"""
+    topK: Int = 10
+  ): [MessageType]
+
+  """
+  Hybrid search combining vector similarity with text filters. Uses DEFAULT_EMBEDDER for global cross-corpus search. Results are first filtered by text criteria, then ranked by similarity.
+  """
+  semanticSearch(
+    """Search query text"""
+    query: String!
+
+    """Optional corpus ID to search within"""
+    corpusId: ID
+
+    """Optional document ID to search within"""
+    documentId: ID
+
+    """Filter by content modalities (TEXT, IMAGE)"""
+    modalities: [String]
+
+    """Filter by annotation label text (case-insensitive substring match)"""
+    labelText: String
+
+    """Filter by raw_text content (case-insensitive substring match)"""
+    rawTextContains: String
+
+    """Maximum number of results to return (default: 50, max: 200)"""
+    limit: Int = 50
+
+    """Number of results to skip for pagination"""
+    offset: Int = 0
+  ): [SemanticSearchResultType]
+
+  """Query moderation action audit logs with filtering"""
+  moderationActions(corpusId: ID, threadId: ID, moderatorId: ID, actionTypes: [String], automatedOnly: Boolean, offset: Int, before: String, after: String, first: Int, last: Int, actionType: ConversationsModerationActionActionTypeChoices, actionType_In: [ConversationsModerationActionActionTypeChoices], created_Gte: DateTime, created_Lte: DateTime): ModerationActionTypeConnection
+
+  """Get a specific moderation action by ID"""
+  moderationAction(id: ID!): ModerationActionType
+
+  """Get moderation metrics for a corpus"""
+  moderationMetrics(corpusId: ID!, timeRangeHours: Int = 24): ModerationMetricsType
+  documentRelationships(corpusId: ID, documentId: ID, offset: Int, before: String, after: String, first: Int, last: Int, relationshipType: DocumentsDocumentRelationshipRelationshipTypeChoices, sourceDocument: ID, targetDocument: ID, annotationLabel: ID, creator: ID, isPublic: Boolean): DocumentRelationshipTypeConnection
+  documentRelationship(
+    """The ID of the object"""
+    id: ID!
+  ): DocumentRelationshipType
+  bulkDocRelationships(corpusId: ID, documentId: ID!, relationshipType: String): [DocumentRelationshipType]
+  notes(titleContains: String, contentContains: String, documentId: ID, annotationId: ID, orderBy: String, offset: Int, before: String, after: String, first: Int, last: Int): NoteTypeConnection
+  note(
+    """The ID of the object"""
+    id: ID!
+  ): NoteType
+  chatMessages(conversationId: ID!, orderBy: String): [MessageType]
+  chatMessage(
+    """The ID of the object"""
+    id: ID!
+  ): MessageType
+
+  """
+  Get messages created by a specific user, with optional filtering and pagination
+  """
+  userMessages(creatorId: ID!, first: Int = 10, msgType: String, orderBy: String): [MessageType]
+  corpusActions(corpusId: ID, trigger: String, disabled: Boolean, offset: Int, before: String, after: String, first: Int, last: Int): CorpusActionTypeConnection
+  agentActionResults(corpusActionId: ID, documentId: ID, status: String, offset: Int, before: String, after: String, first: Int, last: Int): AgentActionResultTypeConnection
+  corpusActionExecutions(corpusId: ID, documentId: ID, corpusActionId: ID, status: String, actionType: String, since: DateTime, offset: Int, before: String, after: String, first: Int, last: Int): CorpusActionExecutionTypeConnection
+  corpusActionTrailStats(corpusId: ID!, since: DateTime): CorpusActionTrailStatsType
+  conversation(
+    """The ID of the object"""
+    id: ID!
+  ): ConversationType
+
+  """Check the status of a bulk document upload job by job ID"""
+  bulkDocumentUploadStatus(jobId: String!): BulkDocumentUploadStatusType
+
+  """Get metadata columns for a corpus"""
+  corpusMetadataColumns(corpusId: ID!): [ColumnType]
+
+  """Get metadata datacells for a document in a corpus"""
+  documentMetadataDatacells(documentId: ID!, corpusId: ID!): [DatacellType]
+
+  """
+  Get metadata completion status for a document using column/datacell system
+  """
+  metadataCompletionStatusV2(documentId: ID!, corpusId: ID!): MetadataCompletionStatusType
+
+  """
+  Get metadata datacells for multiple documents in a single query (batch)
+  """
+  documentsMetadataDatacellsBatch(documentIds: [ID]!, corpusId: ID!): [DocumentMetadataResultType]
+  badges(offset: Int, before: String, after: String, first: Int, last: Int, badgeType: BadgesBadgeBadgeTypeChoices, isAutoAwarded: Boolean, name_Contains: String, name: String, corpusId: String): BadgeTypeConnection
+  badge(
+    """The ID of the object"""
+    id: ID!
+  ): BadgeType
+  userBadges(offset: Int, before: String, after: String, first: Int, last: Int, awardedAt_Gte: DateTime, awardedAt_Lte: DateTime, userId: String, badgeId: String, corpusId: String): UserBadgeTypeConnection
+  userBadge(
+    """The ID of the object"""
+    id: ID!
+  ): UserBadgeType
+
+  """Get available badge criteria types from the registry"""
+  badgeCriteriaTypes(
+    """Filter by scope: 'global', 'corpus', or 'both'"""
+    scope: String
+  ): [CriteriaTypeDefinitionType]
+  agents(offset: Int, before: String, after: String, first: Int, last: Int, scope: AgentsAgentConfigurationScopeChoices, isActive: Boolean, name_Contains: String, name: String, corpusId: String): AgentConfigurationTypeConnection
+  agentConfigurations(offset: Int, before: String, after: String, first: Int, last: Int, scope: AgentsAgentConfigurationScopeChoices, isActive: Boolean, name_Contains: String, name: String, corpusId: String): AgentConfigurationTypeConnection
+  agent(
+    """The ID of the object"""
+    id: ID!
+  ): AgentConfigurationType
+  searchAgentsForMention(
+    """Search query to find agents by name, slug, or description"""
+    textSearch: String
+
+    """Corpus ID to scope agent search (includes global + corpus agents)"""
+    corpusId: ID
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): AgentConfigurationTypeConnection
+
+  """Get all available tools that can be assigned to agents"""
+  availableTools(
+    """
+    Filter by tool category (search, document, corpus, notes, annotations, coordination)
+    """
+    category: String
+  ): [AvailableToolType!]
+
+  """Get all available tool categories"""
+  availableToolCategories: [String!]
+
+  """Get user's notifications (paginated and filterable)"""
+  notifications(offset: Int, before: String, after: String, first: Int, last: Int, isRead: Boolean, notificationType: NotificationsNotificationNotificationTypeChoices, createdAt_Lte: DateTime, createdAt_Gte: DateTime): NotificationTypeConnection
+  notification(
+    """The ID of the object"""
+    id: ID!
+  ): NotificationType
+
+  """Get count of unread notifications for the current user"""
+  unreadNotificationCount: Int
+
+  """Get top contributors for a specific corpus by reputation"""
+  corpusLeaderboard(corpusId: ID!, limit: Int = 10): [UserType]
+
+  """Get top contributors globally by reputation"""
+  globalLeaderboard(limit: Int = 10): [UserType]
+
+  """Get leaderboard for a specific metric and scope"""
+  leaderboard(metric: LeaderboardMetricEnum!, scope: LeaderboardScopeEnum = ALL_TIME, corpusId: ID, limit: Int = 25): LeaderboardType
+
+  """Get overall community engagement statistics"""
+  communityStats(corpusId: ID): CommunityStatsType
+
+  """Public OG metadata for corpus - no auth required"""
+  ogCorpusMetadata(userSlug: String!, corpusSlug: String!): OGCorpusMetadataType
+
+  """Public OG metadata for standalone document - no auth required"""
+  ogDocumentMetadata(userSlug: String!, documentSlug: String!): OGDocumentMetadataType
+
+  """Public OG metadata for document in corpus - no auth required"""
+  ogDocumentInCorpusMetadata(userSlug: String!, corpusSlug: String!, documentSlug: String!): OGDocumentMetadataType
+
+  """Public OG metadata for discussion thread - no auth required"""
+  ogThreadMetadata(userSlug: String!, corpusSlug: String!, threadId: String!): OGThreadMetadataType
+
+  """Public OG metadata for data extract - no auth required"""
+  ogExtractMetadata(extractId: String!): OGExtractMetadataType
+
+  """
+  Materialised install-wide aggregate counts (refreshed periodically). Global, not permission-scoped — use a scoped connection's totalCount for per-user figures. NOTE: these aggregates are readable WITHOUT authentication (landing/dashboard use case); they expose total user/document/corpus/conversation/annotation counts to anonymous callers.
+  """
+  systemStats: SystemStatsType
+}
+
+"""
+Install-wide aggregate metrics, materialised periodically. All counts are global, not permission-scoped.
+"""
+type SystemStatsType {
+  """Active users."""
+  userCount: Int
+
+  """Documents with an active path."""
+  documentCount: Int
+
+  """Corpuses."""
+  corpusCount: Int
+
+  """Non-structural annotations."""
+  annotationCount: Int
+
+  """Non-deleted conversations."""
+  conversationCount: Int
+
+  """Non-deleted chat messages."""
+  messageCount: Int
+
+  """When the snapshot was last recomputed; null until first run."""
+  computedAt: DateTime
+}
+
+type UserType implements Node {
+  """The ID of the object"""
+  id: ID!
+  password: String!
+  lastLogin: DateTime
+
+  """
+  Designates that this user has all permissions without explicitly assigning them.
+  """
+  isSuperuser: Boolean!
+
+  """Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only."""
+  username: String!
+
+  """Designates whether the user can log into this admin site."""
+  isStaff: Boolean!
+  dateJoined: DateTime!
+  name: String!
+  firstName: String!
+  lastName: String!
+  givenName: String!
+  familyName: String!
+  auth0Id: String!
+  phone: String!
+  email: String!
+  synced: Boolean!
+  isActive: Boolean!
+  emailVerified: Boolean!
+  isSocialUser: Boolean!
+  isUsageCapped: Boolean!
+  lastSynced: DateTime
+  firstSignedIn: DateTime!
+  lastIp: String!
+
+  """
+  Case-sensitive URL slug. Allowed characters: A-Z, a-z, 0-9, and hyphen (-).
+  """
+  slug: String
+
+  """Whether the user has accepted cookie consent"""
+  cookieConsentAccepted: Boolean!
+
+  """When the user accepted cookie consent"""
+  cookieConsentDate: DateTime
+
+  """Whether this user's profile is visible to other users"""
+  isProfilePublic: Boolean!
+
+  """
+  Whether the user has dismissed the Getting Started guide on the Discover page
+  """
+  dismissedGettingStarted: Boolean!
+  createdAssignments(offset: Int, before: String, after: String, first: Int, last: Int): AssignmentTypeConnection!
+  myAssignments(offset: Int, before: String, after: String, first: Int, last: Int): AssignmentTypeConnection!
+  userexportSet(offset: Int, before: String, after: String, first: Int, last: Int): UserExportTypeConnection!
+  lockedUserexportObjects(offset: Int, before: String, after: String, first: Int, last: Int): UserExportTypeConnection!
+  userimportSet(offset: Int, before: String, after: String, first: Int, last: Int): UserImportTypeConnection!
+  lockedUserimportObjects(offset: Int, before: String, after: String, first: Int, last: Int): UserImportTypeConnection!
+  lockedDocumentObjects(offset: Int, before: String, after: String, first: Int, last: Int): DocumentTypeConnection!
+  documentSet(offset: Int, before: String, after: String, first: Int, last: Int): DocumentTypeConnection!
+  lockedDocumentanalysisrowObjects(offset: Int, before: String, after: String, first: Int, last: Int): DocumentAnalysisRowTypeConnection!
+  documentanalysisrowSet(offset: Int, before: String, after: String, first: Int, last: Int): DocumentAnalysisRowTypeConnection!
+  lockedDocumentrelationshipObjects(offset: Int, before: String, after: String, first: Int, last: Int): DocumentRelationshipTypeConnection!
+  documentrelationshipSet(offset: Int, before: String, after: String, first: Int, last: Int): DocumentRelationshipTypeConnection!
+  lockedDocumentpathObjects(offset: Int, before: String, after: String, first: Int, last: Int): DocumentPathTypeConnection!
+  documentpathSet(offset: Int, before: String, after: String, first: Int, last: Int): DocumentPathTypeConnection!
+  documentSummaryRevisions(offset: Int, before: String, after: String, first: Int, last: Int): DocumentSummaryRevisionTypeConnection!
+  lockedCorpuscategoryObjects(offset: Int, before: String, after: String, first: Int, last: Int): CorpusCategoryTypeConnection!
+  corpuscategorySet(offset: Int, before: String, after: String, first: Int, last: Int): CorpusCategoryTypeConnection!
+  corpusSet(offset: Int, before: String, after: String, first: Int, last: Int): CorpusTypeConnection!
+  editingCorpuses(offset: Int, before: String, after: String, first: Int, last: Int): CorpusTypeConnection!
+  lockedCorpusactionObjects(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, name: String, name_Icontains: String, name_Istartswith: String, corpus_Id: ID, fieldset_Id: ID, analyzer_Id: ID, agentConfig_Id: ID, trigger: CorpusesCorpusActionTriggerChoices, creator_Id: ID): CorpusActionTypeConnection!
+  corpusactionSet(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, name: String, name_Icontains: String, name_Istartswith: String, corpus_Id: ID, fieldset_Id: ID, analyzer_Id: ID, agentConfig_Id: ID, trigger: CorpusesCorpusActionTriggerChoices, creator_Id: ID): CorpusActionTypeConnection!
+  corpusRevisions(offset: Int, before: String, after: String, first: Int, last: Int): CorpusDescriptionRevisionTypeConnection!
+  corpusfolderSet(offset: Int, before: String, after: String, first: Int, last: Int): CorpusFolderTypeConnection!
+  lockedCorpusactionexecutionObjects(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpus_Id: ID, corpusAction_Id: ID, document_Id: ID, status: CorpusesCorpusActionExecutionStatusChoices, actionType: CorpusesCorpusActionExecutionActionTypeChoices, trigger: CorpusesCorpusActionExecutionTriggerChoices, creator_Id: ID): CorpusActionExecutionTypeConnection!
+  corpusactionexecutionSet(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpus_Id: ID, corpusAction_Id: ID, document_Id: ID, status: CorpusesCorpusActionExecutionStatusChoices, actionType: CorpusesCorpusActionExecutionActionTypeChoices, trigger: CorpusesCorpusActionExecutionTriggerChoices, creator_Id: ID): CorpusActionExecutionTypeConnection!
+  annotationlabelSet(offset: Int, before: String, after: String, first: Int, last: Int): AnnotationLabelTypeConnection!
+  lockedAnnotationlabelObjects(offset: Int, before: String, after: String, first: Int, last: Int): AnnotationLabelTypeConnection!
+  relationshipSet(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+  lockedRelationshipObjects(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+  annotationSet(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  lockedAnnotationObjects(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  lockedLabelsetObjects(offset: Int, before: String, after: String, first: Int, last: Int): LabelSetTypeConnection!
+  labelsetSet(offset: Int, before: String, after: String, first: Int, last: Int): LabelSetTypeConnection!
+  noteSet(offset: Int, before: String, after: String, first: Int, last: Int): NoteTypeConnection!
+  lockedNoteObjects(offset: Int, before: String, after: String, first: Int, last: Int): NoteTypeConnection!
+  noteRevisions(offset: Int, before: String, after: String, first: Int, last: Int): NoteRevisionTypeConnection!
+  lockedGremlinengineObjects(offset: Int, before: String, after: String, first: Int, last: Int): GremlinEngineType_WRITEConnection!
+  gremlinengineSet(offset: Int, before: String, after: String, first: Int, last: Int): GremlinEngineType_WRITEConnection!
+  lockedAnalyzerObjects(offset: Int, before: String, after: String, first: Int, last: Int): AnalyzerTypeConnection!
+  analyzerSet(offset: Int, before: String, after: String, first: Int, last: Int): AnalyzerTypeConnection!
+  analysisSet(offset: Int, before: String, after: String, first: Int, last: Int): AnalysisTypeConnection!
+  lockedAnalysisObjects(offset: Int, before: String, after: String, first: Int, last: Int): AnalysisTypeConnection!
+  lockedFieldsetObjects(offset: Int, before: String, after: String, first: Int, last: Int): FieldsetTypeConnection!
+  fieldsetSet(offset: Int, before: String, after: String, first: Int, last: Int): FieldsetTypeConnection!
+  lockedColumnObjects(offset: Int, before: String, after: String, first: Int, last: Int): ColumnTypeConnection!
+  columnSet(offset: Int, before: String, after: String, first: Int, last: Int): ColumnTypeConnection!
+  lockedExtractObjects(offset: Int, before: String, after: String, first: Int, last: Int): ExtractTypeConnection!
+  extractSet(offset: Int, before: String, after: String, first: Int, last: Int): ExtractTypeConnection!
+  approvedCells(offset: Int, before: String, after: String, first: Int, last: Int): DatacellTypeConnection!
+  rejectedCells(offset: Int, before: String, after: String, first: Int, last: Int): DatacellTypeConnection!
+  lockedDatacellObjects(offset: Int, before: String, after: String, first: Int, last: Int): DatacellTypeConnection!
+  datacellSet(offset: Int, before: String, after: String, first: Int, last: Int): DatacellTypeConnection!
+  lockedUserfeedbackObjects(offset: Int, before: String, after: String, first: Int, last: Int): UserFeedbackTypeConnection!
+  userfeedbackSet(offset: Int, before: String, after: String, first: Int, last: Int): UserFeedbackTypeConnection!
+
+  """Moderator who locked the thread"""
+  lockedConversations(offset: Int, before: String, after: String, first: Int, last: Int): ConversationTypeConnection!
+
+  """Moderator who pinned the thread"""
+  pinnedConversations(offset: Int, before: String, after: String, first: Int, last: Int): ConversationTypeConnection!
+  lockedConversationObjects(offset: Int, before: String, after: String, first: Int, last: Int): ConversationTypeConnection!
+  conversationSet(offset: Int, before: String, after: String, first: Int, last: Int): ConversationTypeConnection!
+  lockedChatmessageObjects(offset: Int, before: String, after: String, first: Int, last: Int): MessageTypeConnection!
+  chatmessageSet(offset: Int, before: String, after: String, first: Int, last: Int): MessageTypeConnection!
+
+  """Moderator who took this action"""
+  moderationActionsTaken(offset: Int, before: String, after: String, first: Int, last: Int): ModerationActionTypeConnection!
+  lockedModerationactionObjects(offset: Int, before: String, after: String, first: Int, last: Int): ModerationActionTypeConnection!
+  moderationactionSet(offset: Int, before: String, after: String, first: Int, last: Int): ModerationActionTypeConnection!
+  lockedBadgeObjects(offset: Int, before: String, after: String, first: Int, last: Int): BadgeTypeConnection!
+  badgeSet(offset: Int, before: String, after: String, first: Int, last: Int): BadgeTypeConnection!
+
+  """User who received the badge"""
+  badges(offset: Int, before: String, after: String, first: Int, last: Int): UserBadgeTypeConnection!
+
+  """User who awarded the badge (null for auto-awards)"""
+  badgesAwarded(offset: Int, before: String, after: String, first: Int, last: Int): UserBadgeTypeConnection!
+
+  """User receiving this notification"""
+  notifications(offset: Int, before: String, after: String, first: Int, last: Int, isRead: Boolean, notificationType: NotificationsNotificationNotificationTypeChoices, createdAt_Lte: DateTime, createdAt_Gte: DateTime): NotificationTypeConnection!
+
+  """User who triggered this notification (if applicable)"""
+  notificationsTriggered(offset: Int, before: String, after: String, first: Int, last: Int, isRead: Boolean, notificationType: NotificationsNotificationNotificationTypeChoices, createdAt_Lte: DateTime, createdAt_Gte: DateTime): NotificationTypeConnection!
+  lockedAgentconfigurationObjects(offset: Int, before: String, after: String, first: Int, last: Int, scope: AgentsAgentConfigurationScopeChoices, isActive: Boolean, corpus: ID): AgentConfigurationTypeConnection!
+  agentconfigurationSet(offset: Int, before: String, after: String, first: Int, last: Int, scope: AgentsAgentConfigurationScopeChoices, isActive: Boolean, corpus: ID): AgentConfigurationTypeConnection!
+  lockedAgentactionresultObjects(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpusAction_Id: ID, document_Id: ID, status: AgentsAgentActionResultStatusChoices, creator_Id: ID): AgentActionResultTypeConnection!
+  agentactionresultSet(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpusAction_Id: ID, document_Id: ID, status: AgentsAgentActionResultStatusChoices, creator_Id: ID): AgentActionResultTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+
+  """Global reputation score across all corpuses"""
+  reputationGlobal: Int
+
+  """Reputation score for a specific corpus"""
+  reputationForCorpus(corpusId: ID!): Int
+
+  """Total number of messages posted by this user"""
+  totalMessages: Int
+
+  """Total number of threads created by this user"""
+  totalThreadsCreated: Int
+
+  """
+  Total number of annotations created by this user (visible to requester)
+  """
+  totalAnnotationsCreated: Int
+
+  """Total number of documents uploaded by this user (visible to requester)"""
+  totalDocumentsUploaded: Int
+}
+
+"""An object with an ID"""
+interface Node {
+  """The ID of the object"""
+  id: ID!
+}
+
+"""
+The `DateTime` scalar type represents a DateTime
+value as specified by
+[iso8601](https://en.wikipedia.org/wiki/ISO_8601).
+"""
+scalar DateTime
+
+type AssignmentTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [AssignmentTypeEdge]!
+  totalCount: Int
+}
+
+"""
+The Relay compliant `PageInfo` type, containing data necessary to paginate this connection.
+"""
+type PageInfo {
+  """When paginating forwards, are there more items?"""
+  hasNextPage: Boolean!
+
+  """When paginating backwards, are there more items?"""
+  hasPreviousPage: Boolean!
+
+  """When paginating backwards, the cursor to continue."""
+  startCursor: String
+
+  """When paginating forwards, the cursor to continue."""
+  endCursor: String
+}
+
+"""A Relay edge containing a `AssignmentType` and its cursor."""
+type AssignmentTypeEdge {
+  """The item at the end of the edge"""
+  node: AssignmentType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type AssignmentType implements Node {
+  """The ID of the object"""
+  id: ID!
+  name: String
+  document: DocumentType!
+  corpus: CorpusType
+  resultingAnnotations(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  resultingRelationships(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+  comments: String!
+  assignor: UserType!
+  assignee: UserType
+  completedAt: DateTime
+  created: DateTime!
+  modified: DateTime!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+type DocumentType implements Node {
+  """The ID of the object"""
+  id: ID!
+  parent: DocumentType
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  title: String
+  description: String
+
+  """
+  Case-sensitive slug unique per creator. Allowed: A-Z, a-z, 0-9, hyphen (-).
+  """
+  slug: String
+  customMeta: JSONString
+  fileType: String!
+  icon: String!
+  pdfFile: String
+  txtExtractFile: String
+  mdSummaryFile: String
+  pageCount: Int!
+  pawlsParseFile: String
+
+  """SHA-256 hash of the PDF file content for caching and integrity checks"""
+  pdfFileHash: String
+
+  """
+  Groups all content versions of same logical document. Implements Rule C1.
+  """
+  versionTreeId: UUID!
+
+  """True for newest content in this version tree. Implements Rule C3."""
+  isCurrent: Boolean!
+
+  """
+  Original document this was copied from (cross-corpus provenance). Implements Rule I2.
+  """
+  sourceDocument: DocumentType
+  processingStarted: DateTime
+  processingFinished: DateTime
+  assignmentSet(offset: Int, before: String, after: String, first: Int, last: Int): AssignmentTypeConnection!
+
+  """
+  Original document this was copied from (cross-corpus provenance). Implements Rule I2.
+  """
+  corpusCopies(offset: Int, before: String, after: String, first: Int, last: Int): DocumentTypeConnection!
+  children(offset: Int, before: String, after: String, first: Int, last: Int): DocumentTypeConnection!
+  rows(offset: Int, before: String, after: String, first: Int, last: Int): DocumentAnalysisRowTypeConnection!
+  sourceRelationships(offset: Int, before: String, after: String, first: Int, last: Int): DocumentRelationshipTypeConnection!
+  targetRelationships(offset: Int, before: String, after: String, first: Int, last: Int): DocumentRelationshipTypeConnection!
+
+  """Specific content version this path points to"""
+  pathRecords(offset: Int, before: String, after: String, first: Int, last: Int): DocumentPathTypeConnection!
+
+  """
+  List of all summary revisions/versions for a specific corpus, ordered by version.
+  """
+  summaryRevisions(corpusId: ID!): [DocumentSummaryRevisionType]
+  corpusSet(offset: Int, before: String, after: String, first: Int, last: Int): CorpusTypeConnection!
+
+  """
+  The document this action was executed on (null for thread-based actions)
+  """
+  corpusActionExecutions(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpus_Id: ID, corpusAction_Id: ID, document_Id: ID, status: CorpusesCorpusActionExecutionStatusChoices, actionType: CorpusesCorpusActionExecutionActionTypeChoices, trigger: CorpusesCorpusActionExecutionTriggerChoices, creator_Id: ID): CorpusActionExecutionTypeConnection!
+  relationships(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+  docAnnotations(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  notes(offset: Int, before: String, after: String, first: Int, last: Int): NoteTypeConnection!
+  includedInAnalyses(offset: Int, before: String, after: String, first: Int, last: Int): AnalysisTypeConnection!
+  extracts(offset: Int, before: String, after: String, first: Int, last: Int): ExtractTypeConnection!
+  extractedDatacells(offset: Int, before: String, after: String, first: Int, last: Int): DatacellTypeConnection!
+
+  """The document to which this conversation belongs"""
+  conversations(offset: Int, before: String, after: String, first: Int, last: Int): ConversationTypeConnection!
+
+  """A document that this chat message is based on"""
+  chatMessages(offset: Int, before: String, after: String, first: Int, last: Int): MessageTypeConnection!
+
+  """The document this action was run on (null for thread-based actions)"""
+  agentActionResults(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpusAction_Id: ID, document_Id: ID, status: AgentsAgentActionResultStatusChoices, creator_Id: ID): AgentActionResultTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+  allStructuralAnnotations: [AnnotationType]
+  allAnnotations(corpusId: ID, analysisId: ID, isStructural: Boolean): [AnnotationType]
+  allRelationships(corpusId: ID, analysisId: ID): [RelationshipType]
+  allDocRelationships(corpusId: String): [DocumentRelationshipType]
+
+  """Count of document relationships for this document in the given corpus"""
+  docRelationshipCount(corpusId: String): Int
+  allNotes(corpusId: ID): [NoteType]
+
+  """Current version number of the summary for a specific corpus"""
+  currentSummaryVersion(corpusId: ID!): Int
+
+  """Current summary content for a specific corpus"""
+  summaryContent(corpusId: ID!): String
+
+  """Content version number in this corpus (from DocumentPath)"""
+  versionNumber(corpusId: ID!): Int
+
+  """True if this document has multiple versions (parent exists)"""
+  hasVersionHistory: Boolean
+
+  """Total number of versions in this document's version tree"""
+  versionCount: Int
+
+  """True if this is the current version (Document.is_current)"""
+  isLatestVersion: Boolean
+
+  """When the document was last modified in this corpus"""
+  lastModified(corpusId: ID!): DateTime
+
+  """Complete version history (lazy-loaded on request)"""
+  versionHistory: VersionHistoryType
+
+  """Path/location history in corpus (lazy-loaded on request)"""
+  pathHistory(corpusId: ID!): PathHistoryType
+
+  """Whether user can restore this document (requires UPDATE permission)"""
+  canRestore(corpusId: ID!): Boolean
+
+  """Whether user can view version history (requires READ permission)"""
+  canViewHistory: Boolean
+
+  """
+  Get annots for spec. page(s) using opt. queries. Either 'page' (single) or 'pages' (multiple).
+  """
+  pageAnnotations(corpusId: ID!, page: Int, pages: [Int], structural: Boolean, analysisId: ID): [AnnotationType]
+
+  """
+  Get relationships where source or target annotations are on the specified page(s).
+  """
+  pageRelationships(corpusId: ID!, pages: [Int]!, structural: Boolean, analysisId: ID): [RelationshipType]
+
+  """
+  Get relationship summary statistics for this document and corpus (MV-backed).
+  """
+  relationshipSummary(corpusId: ID!): GenericScalar
+
+  """Get summary of annotations used in specific extract."""
+  extractAnnotationSummary(extractId: ID!): GenericScalar
+
+  """
+  Get the folder this document is in within a specific corpus (null = root)
+  """
+  folderInCorpus(corpusId: ID!): CorpusFolderType
+}
+
+"""
+Allows use of a JSON String for input / output from the GraphQL schema.
+
+Use of this type is *not recommended* as you lose the benefits of having a defined, static
+schema (one of the key benefits of GraphQL).
+"""
+scalar JSONString
+
+"""
+Leverages the internal Python implementation of UUID (uuid.UUID) to provide native UUID objects
+in fields, resolvers and input.
+"""
+scalar UUID
+
+type DocumentTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [DocumentTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `DocumentType` and its cursor."""
+type DocumentTypeEdge {
+  """The item at the end of the edge"""
+  node: DocumentType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type DocumentAnalysisRowTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [DocumentAnalysisRowTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `DocumentAnalysisRowType` and its cursor."""
+type DocumentAnalysisRowTypeEdge {
+  """The item at the end of the edge"""
+  node: DocumentAnalysisRowType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type DocumentAnalysisRowType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  document: DocumentType!
+  annotations(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  data(offset: Int, before: String, after: String, first: Int, last: Int): DatacellTypeConnection!
+  analysis: AnalysisType
+  extract: ExtractType
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+type AnnotationTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [AnnotationTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `AnnotationType` and its cursor."""
+type AnnotationTypeEdge {
+  """The item at the end of the edge"""
+  node: AnnotationType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type AnnotationType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  page: Int!
+  rawText: String
+  tokensJsons: JSONString
+  boundingBox: JSONString
+  json: GenericScalar
+  parent: AnnotationType
+  annotationType: AnnotationsAnnotationAnnotationTypeChoices!
+  annotationLabel: AnnotationLabelType
+  document: DocumentType
+  corpus: CorpusType
+  analysis: AnalysisType
+
+  """If set, this annotation is private to the analysis that created it"""
+  createdByAnalysis: AnalysisType
+
+  """If set, this annotation is private to the extract that created it"""
+  createdByExtract: ExtractType
+  structural: Boolean!
+
+  """Content modalities present in this annotation: TEXT, IMAGE, etc."""
+  contentModalities: [String]
+
+  """
+  JSON file containing extracted image data for IMAGE modality annotations
+  """
+  imageContentFile: String
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  assignmentSet(offset: Int, before: String, after: String, first: Int, last: Int): AssignmentTypeConnection!
+  rows(offset: Int, before: String, after: String, first: Int, last: Int): DocumentAnalysisRowTypeConnection!
+  sourceNodeInRelationships(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+  targetNodeInRelationships(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+  children(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  notes(offset: Int, before: String, after: String, first: Int, last: Int): NoteTypeConnection!
+  referencingCells(offset: Int, before: String, after: String, first: Int, last: Int): DatacellTypeConnection!
+  userFeedback(offset: Int, before: String, after: String, first: Int, last: Int): UserFeedbackTypeConnection!
+
+  """Annotations that this chat message is based on"""
+  chatMessages(offset: Int, before: String, after: String, first: Int, last: Int): MessageTypeConnection!
+
+  """Annotations that this chat message created"""
+  createdByChatMessage(offset: Int, before: String, after: String, first: Int, last: Int): MessageTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+
+  """Count of user feedback"""
+  feedbackCount: Int
+  allSourceNodeInRelationship: [RelationshipType]
+  allTargetNodeInRelationship: [RelationshipType]
+
+  """List of descendant annotations, each with immediate children's IDs."""
+  descendantsTree: [GenericScalar]
+
+  """
+  List of annotations from the root ancestor, each with immediate children's IDs.
+  """
+  fullTree: [GenericScalar]
+
+  """
+  List representing the path from the root ancestor to this annotation and its descendants.
+  """
+  subtree: [GenericScalar]
+}
+
+"""
+The `GenericScalar` scalar type represents a generic
+GraphQL scalar value that could be:
+String, Boolean, Int, Float, List or Object.
+"""
+scalar GenericScalar
+
+"""An enumeration."""
+enum AnnotationsAnnotationAnnotationTypeChoices {
+  """Relationship label."""
+  RELATIONSHIP_LABEL
+
+  """Document-level type label."""
+  DOC_TYPE_LABEL
+
+  """Token-level labels for token-based labeling"""
+  TOKEN_LABEL
+
+  """Span labels for span-based labeling"""
+  SPAN_LABEL
+}
+
+type AnnotationLabelType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  created: DateTime!
+  modified: DateTime!
+  labelType: AnnotationsAnnotationLabelLabelTypeChoices!
+  analyzer: AnalyzerType
+  readOnly: Boolean!
+  color: String!
+  description: String!
+  icon: String!
+  text: String!
+  isPublic: Boolean!
+  creator: UserType!
+  documentRelationships(offset: Int, before: String, after: String, first: Int, last: Int): DocumentRelationshipTypeConnection!
+  relationships(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+  annotationSet(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  includedInLabelsets(offset: Int, before: String, after: String, first: Int, last: Int): LabelSetTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+"""An enumeration."""
+enum AnnotationsAnnotationLabelLabelTypeChoices {
+  """Relationship label."""
+  RELATIONSHIP_LABEL
+
+  """Document-level type label."""
+  DOC_TYPE_LABEL
+
+  """Token-level labels for token-based labeling"""
+  TOKEN_LABEL
+
+  """Span labels for span-based labeling"""
+  SPAN_LABEL
+}
+
+type AnalyzerType implements Node {
+  userLock: UserType
+  backendLock: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+
+  """The ID of the object"""
+  id: ID!
+  manifest: GenericScalar
+  description: String!
+  disabled: Boolean!
+  isPublic: Boolean!
+  icon: String!
+  hostGremlin: GremlinEngineType_WRITE
+  taskName: String
+
+  """JSONSchema describing the analyzer's expected input if provided."""
+  inputSchema: GenericScalar
+  corpusactionSet(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, name: String, name_Icontains: String, name_Istartswith: String, corpus_Id: ID, fieldset_Id: ID, analyzer_Id: ID, agentConfig_Id: ID, trigger: CorpusesCorpusActionTriggerChoices, creator_Id: ID): CorpusActionTypeConnection!
+  annotationLabels(offset: Int, before: String, after: String, first: Int, last: Int): AnnotationLabelTypeConnection!
+  relationshipSet(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+  labelsetSet(offset: Int, before: String, after: String, first: Int, last: Int): LabelSetTypeConnection!
+  analysisSet(offset: Int, before: String, after: String, first: Int, last: Int): AnalysisTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+  analyzerId: String
+  fullLabelList: [AnnotationLabelType]
+}
+
+type GremlinEngineType_WRITE implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  url: String!
+  lastSynced: DateTime
+  installStarted: DateTime
+  installCompleted: DateTime
+  isPublic: Boolean!
+  analyzerSet(offset: Int, before: String, after: String, first: Int, last: Int): AnalyzerTypeConnection!
+  apiKey: String
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+type AnalyzerTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [AnalyzerTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `AnalyzerType` and its cursor."""
+type AnalyzerTypeEdge {
+  """The item at the end of the edge"""
+  node: AnalyzerType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type CorpusActionTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [CorpusActionTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `CorpusActionType` and its cursor."""
+type CorpusActionTypeEdge {
+  """The item at the end of the edge"""
+  node: CorpusActionType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type CorpusActionType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  name: String!
+  corpus: CorpusType!
+  fieldset: FieldsetType
+  analyzer: AnalyzerType
+
+  """Agent configuration to use for this action"""
+  agentConfig: AgentConfigurationType
+
+  """Task-specific instructions for the agent (e.g., 'Summarize this document')"""
+  taskInstructions: String!
+  preAuthorizedTools: [String]
+  trigger: CorpusesCorpusActionTriggerChoices!
+  disabled: Boolean!
+  runOnAllCorpuses: Boolean!
+
+  """The corpus action configuration that was executed"""
+  executions(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpus_Id: ID, corpusAction_Id: ID, document_Id: ID, status: CorpusesCorpusActionExecutionStatusChoices, actionType: CorpusesCorpusActionExecutionActionTypeChoices, trigger: CorpusesCorpusActionExecutionTriggerChoices, creator_Id: ID): CorpusActionExecutionTypeConnection!
+  analyses(offset: Int, before: String, after: String, first: Int, last: Int): AnalysisTypeConnection!
+  extracts(offset: Int, before: String, after: String, first: Int, last: Int): ExtractTypeConnection!
+
+  """The corpus action that triggered this execution"""
+  agentResults(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpusAction_Id: ID, document_Id: ID, status: AgentsAgentActionResultStatusChoices, creator_Id: ID): AgentActionResultTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+type CorpusType implements Node {
+  """The ID of the object"""
+  id: ID!
+  parent: CorpusType
+  title: String!
+  description: String!
+
+  """
+  Case-sensitive slug unique per creator. Allowed: A-Z, a-z, 0-9, hyphen (-).
+  """
+  slug: String
+
+  """Markdown description file for this corpus."""
+  mdDescription: String
+  icon: String
+
+  """Documents in this corpus via DocumentPath"""
+  documents(before: String, after: String, first: Int, last: Int): DocumentTypeConnection
+  autoBrandingEnabled: Boolean!
+  categories: [CorpusCategoryType]
+  labelSet: LabelSetType
+
+  """List of fully qualified Python paths to post-processor functions"""
+  postProcessors: JSONString!
+
+  """
+  Fully qualified Python path to the embedder class to use for this corpus
+  """
+  preferredEmbedder: String
+
+  """
+  Custom system instructions for the corpus-level agent. If not set, uses DEFAULT_CORPUS_AGENT_INSTRUCTIONS from settings.
+  """
+  corpusAgentInstructions: String
+
+  """
+  Custom system instructions for document-level agents in this corpus. If not set, uses DEFAULT_DOCUMENT_AGENT_INSTRUCTIONS from settings.
+  """
+  documentAgentInstructions: String
+  allowComments: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  backendLock: Boolean!
+  userLock: UserType
+  error: Boolean!
+  created: DateTime!
+  modified: DateTime!
+  assignmentSet(offset: Int, before: String, after: String, first: Int, last: Int): AssignmentTypeConnection!
+  documentRelationships(offset: Int, before: String, after: String, first: Int, last: Int): DocumentRelationshipTypeConnection!
+
+  """Corpus owning this path"""
+  documentPaths(offset: Int, before: String, after: String, first: Int, last: Int): DocumentPathTypeConnection!
+  documentSummaryRevisions(offset: Int, before: String, after: String, first: Int, last: Int): DocumentSummaryRevisionTypeConnection!
+  children(offset: Int, before: String, after: String, first: Int, last: Int): CorpusTypeConnection!
+  actions(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, name: String, name_Icontains: String, name_Istartswith: String, corpus_Id: ID, fieldset_Id: ID, analyzer_Id: ID, agentConfig_Id: ID, trigger: CorpusesCorpusActionTriggerChoices, creator_Id: ID): CorpusActionTypeConnection!
+  revisions(offset: Int, before: String, after: String, first: Int, last: Int): CorpusDescriptionRevisionTypeConnection!
+  engagementMetrics: CorpusEngagementMetricsType
+
+  """All folders in this corpus (flat list)"""
+  folders: [CorpusFolderType]
+
+  """Denormalized corpus reference for fast queries"""
+  actionExecutions(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpus_Id: ID, corpusAction_Id: ID, document_Id: ID, status: CorpusesCorpusActionExecutionStatusChoices, actionType: CorpusesCorpusActionExecutionActionTypeChoices, trigger: CorpusesCorpusActionExecutionTriggerChoices, creator_Id: ID): CorpusActionExecutionTypeConnection!
+  relationships(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+  annotations(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  notes(offset: Int, before: String, after: String, first: Int, last: Int): NoteTypeConnection!
+  analyses(offset: Int, before: String, after: String, first: Int, last: Int): AnalysisTypeConnection!
+  metadataSchema: FieldsetType
+  extracts(offset: Int, before: String, after: String, first: Int, last: Int): ExtractTypeConnection!
+
+  """The corpus to which this conversation belongs"""
+  conversations(offset: Int, before: String, after: String, first: Int, last: Int): ConversationTypeConnection!
+
+  """If badge_type is CORPUS, the corpus this badge belongs to"""
+  badges(offset: Int, before: String, after: String, first: Int, last: Int): BadgeTypeConnection!
+
+  """For corpus-specific badges, the context in which it was awarded"""
+  userBadges(offset: Int, before: String, after: String, first: Int, last: Int): UserBadgeTypeConnection!
+
+  """Corpus this agent belongs to (if scope=CORPUS)"""
+  agents(offset: Int, before: String, after: String, first: Int, last: Int, scope: AgentsAgentConfigurationScopeChoices, isActive: Boolean, corpus: ID): AgentConfigurationTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+  allAnnotationSummaries(analysisId: ID, labelTypes: [LabelTypeEnum]): [AnnotationType]
+  appliedAnalyzerIds: [String]
+  descriptionRevisions: [CorpusDescriptionRevisionType]
+}
+
+"""
+GraphQL type for corpus categories.
+
+NOTE: This type does NOT use AnnotatePermissionsForReadMixin because
+corpus categories are admin-provisioned structural data that is globally
+visible to all users. Categories are managed via Django Admin only and
+do not have per-user permissions.
+
+See docs/permissioning/consolidated_permissioning_guide.md for details.
+"""
+type CorpusCategoryType implements Node {
+  """The ID of the object"""
+  id: ID!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  name: String!
+  description: String!
+
+  """Lucide icon name (e.g., 'scroll', 'file-text', 'building-2')"""
+  icon: String!
+
+  """Hex color code for the category badge"""
+  color: String!
+
+  """Order in which categories appear in UI"""
+  sortOrder: Int!
+
+  """Number of corpuses in this category"""
+  corpusCount: Int
+}
+
+type LabelSetType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  title: String!
+  description: String!
+  icon: String!
+  annotationLabels(offset: Int, before: String, after: String, first: Int, last: Int, description_Contains: String, text: String, text_Contains: String, labelType: AnnotationsAnnotationLabelLabelTypeChoices, usedInLabelsetId: String, usedInLabelsetForCorpusId: String, usedInAnalysisIds: String): AnnotationLabelTypeConnection
+  analyzer: AnalyzerType
+  usedByCorpuses(offset: Int, before: String, after: String, first: Int, last: Int): CorpusTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+
+  """Count of document-level type labels"""
+  docLabelCount: Int
+
+  """Count of span-based labels"""
+  spanLabelCount: Int
+
+  """Count of token-level labels"""
+  tokenLabelCount: Int
+
+  """Number of corpuses using this label set"""
+  corpusCount: Int
+  allAnnotationLabels: [AnnotationLabelType]
+}
+
+type AnnotationLabelTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [AnnotationLabelTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `AnnotationLabelType` and its cursor."""
+type AnnotationLabelTypeEdge {
+  """The item at the end of the edge"""
+  node: AnnotationLabelType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type CorpusTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [CorpusTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `CorpusType` and its cursor."""
+type CorpusTypeEdge {
+  """The item at the end of the edge"""
+  node: CorpusType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type DocumentRelationshipTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [DocumentRelationshipTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `DocumentRelationshipType` and its cursor."""
+type DocumentRelationshipTypeEdge {
+  """The item at the end of the edge"""
+  node: DocumentRelationshipType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""GraphQL type for DocumentRelationship model."""
+type DocumentRelationshipType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  sourceDocument: DocumentType!
+  targetDocument: DocumentType!
+  relationshipType: DocumentsDocumentRelationshipRelationshipTypeChoices!
+  annotationLabel: AnnotationLabelType
+  corpus: CorpusType
+  data: GenericScalar
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+"""An enumeration."""
+enum DocumentsDocumentRelationshipRelationshipTypeChoices {
+  """Notes"""
+  NOTES
+
+  """Relationship"""
+  RELATIONSHIP
+}
+
+type DocumentPathTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [DocumentPathTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `DocumentPathType` and its cursor."""
+type DocumentPathTypeEdge {
+  """The item at the end of the edge"""
+  node: DocumentPathType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""
+GraphQL type for DocumentPath model - represents filesystem lifecycle events.
+"""
+type DocumentPathType implements Node {
+  """The ID of the object"""
+  id: ID!
+  parent: DocumentPathType
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+
+  """Specific content version this path points to"""
+  document: DocumentType!
+
+  """Corpus owning this path"""
+  corpus: CorpusType!
+
+  """Current folder (null if folder deleted or at root)"""
+  folder: CorpusFolderType
+
+  """Full path in corpus filesystem"""
+  path: String!
+
+  """Content version number (Rule P5: increments only on content changes)"""
+  versionNumber: Int!
+
+  """Soft delete flag"""
+  isDeleted: Boolean!
+
+  """True for current filesystem state (Rule P3)"""
+  isCurrent: Boolean!
+  children(offset: Int, before: String, after: String, first: Int, last: Int): DocumentPathTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+
+  """Inferred action type"""
+  action: PathActionEnum
+}
+
+"""
+GraphQL type for corpus folders.
+Folders inherit permissions from their parent corpus.
+"""
+type CorpusFolderType implements Node {
+  """The ID of the object"""
+  id: ID!
+  parent: CorpusFolderType
+
+  """Folder name (not full path)"""
+  name: String!
+
+  """Parent corpus this folder belongs to"""
+  corpus: CorpusType!
+  description: String!
+
+  """Hex color for UI display"""
+  color: String!
+
+  """Icon identifier for UI"""
+  icon: String!
+
+  """List of tags for categorization"""
+  tags: JSONString!
+  isPublic: Boolean!
+  created: DateTime!
+  modified: DateTime!
+  creator: UserType!
+
+  """Current folder (null if folder deleted or at root)"""
+  documentPaths(offset: Int, before: String, after: String, first: Int, last: Int): DocumentPathTypeConnection!
+
+  """Immediate child folders"""
+  children: [CorpusFolderType]
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+
+  """Full path from root to this folder"""
+  path: String
+
+  """Number of documents directly in this folder"""
+  documentCount: Int
+
+  """Number of documents in this folder and all subfolders"""
+  descendantDocumentCount: Int
+}
+
+"""Enum for document path lifecycle actions."""
+enum PathActionEnum {
+  IMPORTED
+  MOVED
+  RENAMED
+  DELETED
+  RESTORED
+  UPDATED
+}
+
+type DocumentSummaryRevisionTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [DocumentSummaryRevisionTypeEdge]!
+  totalCount: Int
+}
+
+"""
+A Relay edge containing a `DocumentSummaryRevisionType` and its cursor.
+"""
+type DocumentSummaryRevisionTypeEdge {
+  """The item at the end of the edge"""
+  node: DocumentSummaryRevisionType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""GraphQL type for document summary revisions."""
+type DocumentSummaryRevisionType implements Node {
+  """The ID of the object"""
+  id: ID!
+  document: DocumentType!
+  corpus: CorpusType!
+  author: UserType
+  version: Int!
+  diff: String!
+  snapshot: String
+  checksumBase: String!
+  checksumFull: String!
+  created: DateTime!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+"""An enumeration."""
+enum CorpusesCorpusActionTriggerChoices {
+  """Add Document"""
+  ADD_DOCUMENT
+
+  """Edit Document"""
+  EDIT_DOCUMENT
+
+  """New Thread Created"""
+  NEW_THREAD
+
+  """New Message Posted"""
+  NEW_MESSAGE
+}
+
+type CorpusDescriptionRevisionTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [CorpusDescriptionRevisionTypeEdge]!
+  totalCount: Int
+}
+
+"""
+A Relay edge containing a `CorpusDescriptionRevisionType` and its cursor.
+"""
+type CorpusDescriptionRevisionTypeEdge {
+  """The item at the end of the edge"""
+  node: CorpusDescriptionRevisionType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""GraphQL type for corpus description revisions."""
+type CorpusDescriptionRevisionType implements Node {
+  """The ID of the object"""
+  id: ID!
+  corpus: CorpusType!
+  author: UserType
+  version: Int!
+  diff: String!
+  snapshot: String
+  checksumBase: String!
+  checksumFull: String!
+  created: DateTime!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+"""
+GraphQL type for corpus engagement metrics.
+
+This type does NOT use AnnotatePermissionsForReadMixin because
+engagement metrics are read-only and permissions are checked on
+the parent Corpus object.
+
+Epic: #565 - Corpus Engagement Metrics & Analytics
+Issue: #568 - Create GraphQL queries for engagement metrics and leaderboards
+"""
+type CorpusEngagementMetricsType {
+  """Total number of discussion threads in this corpus"""
+  totalThreads: Int
+
+  """Number of active (not locked/deleted) threads"""
+  activeThreads: Int
+
+  """Total number of messages across all threads"""
+  totalMessages: Int
+
+  """Number of messages posted in the last 7 days"""
+  messagesLast7Days: Int
+
+  """Number of messages posted in the last 30 days"""
+  messagesLast30Days: Int
+
+  """Total number of unique users who have posted messages"""
+  uniqueContributors: Int
+
+  """Number of users who posted in the last 30 days"""
+  activeContributors30Days: Int
+
+  """Total upvotes across all messages in this corpus"""
+  totalUpvotes: Int
+
+  """Average number of messages per thread"""
+  avgMessagesPerThread: Float
+
+  """Timestamp when metrics were last calculated"""
+  lastUpdated: DateTime
+}
+
+type CorpusActionExecutionTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [CorpusActionExecutionTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `CorpusActionExecutionType` and its cursor."""
+type CorpusActionExecutionTypeEdge {
+  """The item at the end of the edge"""
+  node: CorpusActionExecutionType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""
+GraphQL type for CorpusActionExecution - action execution tracking records.
+"""
+type CorpusActionExecutionType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+
+  """The corpus action configuration that was executed"""
+  corpusAction: CorpusActionType!
+
+  """
+  The document this action was executed on (null for thread-based actions)
+  """
+  document: DocumentType
+
+  """The thread that triggered this execution (for thread-based actions)"""
+  conversation: ConversationType
+
+  """The message that triggered this execution (for NEW_MESSAGE trigger)"""
+  message: MessageType
+
+  """Denormalized corpus reference for fast queries"""
+  corpus: CorpusType!
+
+  """Type of action (fieldset/analyzer/agent)"""
+  actionType: CorpusesCorpusActionExecutionActionTypeChoices!
+  status: CorpusesCorpusActionExecutionStatusChoices!
+
+  """When the execution was queued (set explicitly for bulk_create)"""
+  queuedAt: DateTime!
+
+  """When execution actually started"""
+  startedAt: DateTime
+
+  """When execution completed (success or failure)"""
+  completedAt: DateTime
+
+  """What triggered this execution"""
+  trigger: CorpusesCorpusActionExecutionTriggerChoices!
+  affectedObjects: [JSONString]
+
+  """Detailed agent result (for agent actions only)"""
+  agentResult: AgentActionResultType
+
+  """Extract created (for fieldset actions only)"""
+  extract: ExtractType
+
+  """Analysis created (for analyzer actions only)"""
+  analysis: AnalysisType
+
+  """Error message if status is FAILED"""
+  errorMessage: String!
+
+  """Full traceback for debugging (truncated to 10KB)"""
+  errorTraceback: String!
+  executionMetadata: JSONString
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+  durationSeconds: Float
+  waitTimeSeconds: Float
+}
+
+type ConversationType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+
+  """Optional title for the conversation"""
+  title: String!
+
+  """Optional description for the conversation"""
+  description: String!
+
+  """Timestamp when the conversation was created"""
+  createdAt: DateTime!
+
+  """Timestamp when the conversation was last updated"""
+  updatedAt: DateTime!
+
+  """Type of conversation (chat or thread)"""
+  conversationType: ConversationTypeEnum
+
+  """Timestamp when the conversation was soft-deleted"""
+  deletedAt: DateTime
+
+  """Whether the thread is locked (prevents new messages)"""
+  isLocked: Boolean!
+
+  """Timestamp when the thread was locked"""
+  lockedAt: DateTime
+
+  """Moderator who locked the thread"""
+  lockedBy: UserType
+
+  """Whether the thread is pinned (appears at top of list)"""
+  isPinned: Boolean!
+
+  """Timestamp when the thread was pinned"""
+  pinnedAt: DateTime
+
+  """Moderator who pinned the thread"""
+  pinnedBy: UserType
+
+  """Cached count of upvotes for this conversation/thread"""
+  upvoteCount: Int!
+
+  """Cached count of downvotes for this conversation/thread"""
+  downvoteCount: Int!
+
+  """The corpus to which this conversation belongs"""
+  chatWithCorpus: CorpusType
+
+  """The document to which this conversation belongs"""
+  chatWithDocument: DocumentType
+
+  """The thread that triggered this execution (for thread-based actions)"""
+  corpusActionExecutions(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpus_Id: ID, corpusAction_Id: ID, document_Id: ID, status: CorpusesCorpusActionExecutionStatusChoices, actionType: CorpusesCorpusActionExecutionActionTypeChoices, trigger: CorpusesCorpusActionExecutionTriggerChoices, creator_Id: ID): CorpusActionExecutionTypeConnection!
+
+  """The conversation to which this chat message belongs"""
+  chatMessages(offset: Int, before: String, after: String, first: Int, last: Int): MessageTypeConnection!
+
+  """The conversation that was moderated"""
+  moderationActions(offset: Int, before: String, after: String, first: Int, last: Int): ModerationActionTypeConnection!
+
+  """Related conversation/thread if applicable"""
+  notifications(offset: Int, before: String, after: String, first: Int, last: Int, isRead: Boolean, notificationType: NotificationsNotificationNotificationTypeChoices, createdAt_Lte: DateTime, createdAt_Gte: DateTime): NotificationTypeConnection!
+
+  """Conversation record containing the full agent interaction"""
+  corpusActionResults(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpusAction_Id: ID, document_Id: ID, status: AgentsAgentActionResultStatusChoices, creator_Id: ID): AgentActionResultTypeConnection!
+
+  """Thread that triggered this agent action (for thread-based triggers)"""
+  triggeredAgentActionResults(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpusAction_Id: ID, document_Id: ID, status: AgentsAgentActionResultStatusChoices, creator_Id: ID): AgentActionResultTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+  allMessages: [MessageType]
+
+  """
+  Current user's vote on this conversation: 'UPVOTE', 'DOWNVOTE', or null
+  """
+  userVote: String
+}
+
+"""Enum for conversation types."""
+enum ConversationTypeEnum {
+  CHAT
+  THREAD
+}
+
+"""An enumeration."""
+enum CorpusesCorpusActionExecutionStatusChoices {
+  """Queued"""
+  QUEUED
+
+  """Running"""
+  RUNNING
+
+  """Completed"""
+  COMPLETED
+
+  """Failed"""
+  FAILED
+
+  """Skipped"""
+  SKIPPED
+}
+
+"""An enumeration."""
+enum CorpusesCorpusActionExecutionActionTypeChoices {
+  """Fieldset Extract"""
+  FIELDSET
+
+  """Analyzer"""
+  ANALYZER
+
+  """Agent"""
+  AGENT
+}
+
+"""An enumeration."""
+enum CorpusesCorpusActionExecutionTriggerChoices {
+  """Add Document"""
+  ADD_DOCUMENT
+
+  """Edit Document"""
+  EDIT_DOCUMENT
+
+  """New Thread Created"""
+  NEW_THREAD
+
+  """New Message Posted"""
+  NEW_MESSAGE
+}
+
+type MessageTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [MessageTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `MessageType` and its cursor."""
+type MessageTypeEdge {
+  """The item at the end of the edge"""
+  node: MessageType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type MessageType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+
+  """The conversation to which this chat message belongs"""
+  conversation: ConversationType!
+
+  """The type of message (SYSTEM, HUMAN, or LLM)"""
+  msgType: ConversationsChatMessageMsgTypeChoices!
+
+  """Type of agent that generated this message"""
+  agentType: AgentTypeEnum
+
+  """Agent configuration that generated this message"""
+  agentConfiguration: AgentConfigurationType
+
+  """Parent message for threaded replies"""
+  parentMessage: MessageType
+
+  """The textual content of the chat message"""
+  content: String!
+  data: GenericScalar
+
+  """Timestamp when the chat message was created"""
+  createdAt: DateTime!
+
+  """Timestamp when the message was soft-deleted"""
+  deletedAt: DateTime
+
+  """A document that this chat message is based on"""
+  sourceDocument: DocumentType
+
+  """Annotations that this chat message is based on"""
+  sourceAnnotations(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+
+  """Annotations that this chat message created"""
+  createdAnnotations(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+
+  """Agents mentioned in this message that should respond"""
+  mentionedAgents(offset: Int, before: String, after: String, first: Int, last: Int, scope: AgentsAgentConfigurationScopeChoices, isActive: Boolean, corpus: ID): AgentConfigurationTypeConnection!
+
+  """Lifecycle state of the message for quick filtering"""
+  state: ConversationsChatMessageStateChoices!
+
+  """Cached count of upvotes for this message"""
+  upvoteCount: Int!
+
+  """Cached count of downvotes for this message"""
+  downvoteCount: Int!
+
+  """The message that triggered this execution (for NEW_MESSAGE trigger)"""
+  corpusActionExecutions(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpus_Id: ID, corpusAction_Id: ID, document_Id: ID, status: CorpusesCorpusActionExecutionStatusChoices, actionType: CorpusesCorpusActionExecutionActionTypeChoices, trigger: CorpusesCorpusActionExecutionTriggerChoices, creator_Id: ID): CorpusActionExecutionTypeConnection!
+
+  """Parent message for threaded replies"""
+  replies(offset: Int, before: String, after: String, first: Int, last: Int): MessageTypeConnection!
+
+  """The message that was moderated"""
+  moderationActions(offset: Int, before: String, after: String, first: Int, last: Int): ModerationActionTypeConnection!
+
+  """Related message if applicable"""
+  notifications(offset: Int, before: String, after: String, first: Int, last: Int, isRead: Boolean, notificationType: NotificationsNotificationNotificationTypeChoices, createdAt_Lte: DateTime, createdAt_Gte: DateTime): NotificationTypeConnection!
+
+  """Message that triggered this agent action (for NEW_MESSAGE trigger)"""
+  triggeredAgentActionResults(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpusAction_Id: ID, document_Id: ID, status: AgentsAgentActionResultStatusChoices, creator_Id: ID): AgentActionResultTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+
+  """
+  Corpuses and documents mentioned in this message using @ syntax. Only includes resources visible to the requesting user.
+  """
+  mentionedResources: [MentionedResourceType]
+
+  """Current user's vote on this message: 'UPVOTE', 'DOWNVOTE', or null"""
+  userVote: String
+}
+
+"""An enumeration."""
+enum ConversationsChatMessageMsgTypeChoices {
+  """System"""
+  SYSTEM
+
+  """Human"""
+  HUMAN
+
+  """LLM"""
+  LLM
+}
+
+"""Enum for agent types in messages."""
+enum AgentTypeEnum {
+  DOCUMENT_AGENT
+  CORPUS_AGENT
+}
+
+"""GraphQL type for agent configurations."""
+type AgentConfigurationType implements Node {
+  """The ID of the object"""
+  id: ID!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+
+  """Display name for this agent"""
+  name: String!
+
+  """URL-friendly identifier for mentions (e.g., 'research-assistant')"""
+  slug: String
+
+  """Description of agent's purpose and capabilities"""
+  description: String!
+
+  """System prompt/instructions for this agent"""
+  systemInstructions: String!
+
+  """List of tool identifiers this agent can use"""
+  availableTools: [String]
+
+  """Subset of tools that require explicit user permission to use"""
+  permissionRequiredTools: [String]
+
+  """
+  Visual config: {'icon': 'bot', 'color': '#4A90E2', 'label': 'AI Assistant'}
+  """
+  badgeConfig: JSONString!
+
+  """URL to agent's avatar image"""
+  avatarUrl: String
+  scope: AgentsAgentConfigurationScopeChoices!
+
+  """Corpus this agent belongs to (if scope=CORPUS)"""
+  corpus: CorpusType
+
+  """Whether this agent is active and can be used"""
+  isActive: Boolean!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+
+  """
+  The @ mention format for this agent (e.g., '@agent:research-assistant')
+  """
+  mentionFormat: String
+}
+
+"""An enumeration."""
+enum AgentsAgentConfigurationScopeChoices {
+  """Global"""
+  GLOBAL
+
+  """Corpus-specific"""
+  CORPUS
+}
+
+type AgentConfigurationTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [AgentConfigurationTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `AgentConfigurationType` and its cursor."""
+type AgentConfigurationTypeEdge {
+  """The item at the end of the edge"""
+  node: AgentConfigurationType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""An enumeration."""
+enum ConversationsChatMessageStateChoices {
+  """In Progress"""
+  IN_PROGRESS
+
+  """Completed"""
+  COMPLETED
+
+  """Cancelled"""
+  CANCELLED
+
+  """Error"""
+  ERROR
+
+  """Awaiting Approval"""
+  AWAITING_APPROVAL
+}
+
+type ModerationActionTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [ModerationActionTypeEdge]!
+}
+
+"""A Relay edge containing a `ModerationActionType` and its cursor."""
+type ModerationActionTypeEdge {
+  """The item at the end of the edge"""
+  node: ModerationActionType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""GraphQL type for ModerationAction audit records."""
+type ModerationActionType implements Node {
+  """The ID of the object"""
+  id: ID!
+  created: DateTime!
+  modified: DateTime!
+
+  """The conversation that was moderated"""
+  conversation: ConversationType
+
+  """The message that was moderated"""
+  message: MessageType
+
+  """Type of moderation action taken"""
+  actionType: ConversationsModerationActionActionTypeChoices!
+
+  """Moderator who took this action"""
+  moderator: UserType
+
+  """Optional reason for the moderation action"""
+  reason: String!
+
+  """Corpus ID if action is on a corpus thread"""
+  corpusId: ID
+
+  """Whether this was an automated action"""
+  isAutomated: Boolean
+
+  """Whether this action can be rolled back"""
+  canRollback: Boolean
+}
+
+"""An enumeration."""
+enum ConversationsModerationActionActionTypeChoices {
+  """Lock Thread"""
+  LOCK_THREAD
+
+  """Unlock Thread"""
+  UNLOCK_THREAD
+
+  """Pin Thread"""
+  PIN_THREAD
+
+  """Unpin Thread"""
+  UNPIN_THREAD
+
+  """Delete Thread"""
+  DELETE_THREAD
+
+  """Restore Thread"""
+  RESTORE_THREAD
+
+  """Delete Message"""
+  DELETE_MESSAGE
+
+  """Restore Message"""
+  RESTORE_MESSAGE
+}
+
+type NotificationTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [NotificationTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `NotificationType` and its cursor."""
+type NotificationTypeEdge {
+  """The item at the end of the edge"""
+  node: NotificationType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""GraphQL type for notifications."""
+type NotificationType implements Node {
+  """The ID of the object"""
+  id: ID!
+
+  """User receiving this notification"""
+  recipient: UserType!
+
+  """Type of notification"""
+  notificationType: NotificationsNotificationNotificationTypeChoices!
+
+  """Related message if applicable"""
+  message: MessageType
+
+  """Related conversation/thread if applicable"""
+  conversation: ConversationType
+
+  """User who triggered this notification (if applicable)"""
+  actor: UserType
+
+  """Whether the notification has been read"""
+  isRead: Boolean!
+
+  """When the notification was created"""
+  createdAt: DateTime!
+
+  """When the notification was last modified"""
+  modified: DateTime!
+
+  """
+  Additional context data for the notification (e.g., vote type, badge info)
+  """
+  data: JSONString
+}
+
+"""An enumeration."""
+enum NotificationsNotificationNotificationTypeChoices {
+  """Reply to Message"""
+  REPLY
+
+  """Vote on Message"""
+  VOTE
+
+  """Badge Awarded"""
+  BADGE
+
+  """Mentioned in Message"""
+  MENTION
+
+  """Answer Accepted"""
+  ACCEPTED
+
+  """Thread Locked"""
+  THREAD_LOCKED
+
+  """Thread Unlocked"""
+  THREAD_UNLOCKED
+
+  """Thread Pinned"""
+  THREAD_PINNED
+
+  """Thread Unpinned"""
+  THREAD_UNPINNED
+
+  """Message Deleted"""
+  MESSAGE_DELETED
+
+  """Thread Deleted"""
+  THREAD_DELETED
+
+  """Message Restored"""
+  MESSAGE_RESTORED
+
+  """Thread Restored"""
+  THREAD_RESTORED
+
+  """Reply in Thread You're Participating In"""
+  THREAD_REPLY
+
+  """Document Processing Complete"""
+  DOCUMENT_PROCESSED
+
+  """Extract Complete"""
+  EXTRACT_COMPLETE
+
+  """Analysis Complete"""
+  ANALYSIS_COMPLETE
+
+  """Analysis Failed"""
+  ANALYSIS_FAILED
+
+  """Export Complete"""
+  EXPORT_COMPLETE
+}
+
+type AgentActionResultTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [AgentActionResultTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `AgentActionResultType` and its cursor."""
+type AgentActionResultTypeEdge {
+  """The item at the end of the edge"""
+  node: AgentActionResultType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""
+GraphQL type for AgentActionResult - results from agent-based corpus actions.
+"""
+type AgentActionResultType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+
+  """The corpus action that triggered this execution"""
+  corpusAction: CorpusActionType!
+
+  """The document this action was run on (null for thread-based actions)"""
+  document: DocumentType
+
+  """Conversation record containing the full agent interaction"""
+  conversation: ConversationType
+
+  """Thread that triggered this agent action (for thread-based triggers)"""
+  triggeringConversation: ConversationType
+
+  """Message that triggered this agent action (for NEW_MESSAGE trigger)"""
+  triggeringMessage: MessageType
+  status: AgentsAgentActionResultStatusChoices!
+  startedAt: DateTime
+  completedAt: DateTime
+
+  """Final response content from the agent"""
+  agentResponse: String!
+  toolsExecuted: [JSONString]
+
+  """Error message if status is FAILED"""
+  errorMessage: String!
+  executionMetadata: JSONString
+
+  """Detailed agent result (for agent actions only)"""
+  executionRecord(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpus_Id: ID, corpusAction_Id: ID, document_Id: ID, status: CorpusesCorpusActionExecutionStatusChoices, actionType: CorpusesCorpusActionExecutionActionTypeChoices, trigger: CorpusesCorpusActionExecutionTriggerChoices, creator_Id: ID): CorpusActionExecutionTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+  durationSeconds: Float
+}
+
+"""An enumeration."""
+enum AgentsAgentActionResultStatusChoices {
+  """Pending"""
+  PENDING
+
+  """Running"""
+  RUNNING
+
+  """Completed"""
+  COMPLETED
+
+  """Failed"""
+  FAILED
+}
+
+"""
+Represents a corpus, document, or annotation mentioned in a message.
+
+Mention patterns:
+  @corpus:legal-contracts
+  @document:contract-template
+  @corpus:legal-contracts/document:contract-template
+  [text](/d/.../doc?ann=id) → Annotation mention via markdown link
+
+For annotations, includes full metadata for rich tooltip display.
+Permission-safe: Only returns resources visible to the requesting user.
+"""
+type MentionedResourceType {
+  """
+  Resource type: "corpus", "document", or "annotation"
+  """
+  type: String!
+
+  """Global ID of the resource"""
+  id: ID!
+
+  """URL-safe slug (null for annotations)"""
+  slug: String
+
+  """Display title of the resource"""
+  title: String!
+
+  """Frontend URL path to navigate to the resource"""
+  url: String!
+
+  """Parent corpus context (for documents within a corpus)"""
+  corpus: MentionedResourceType
+
+  """Full annotation text content"""
+  rawText: String
+
+  """Annotation label name (e.g., 'Section Header', 'Definition')"""
+  annotationLabel: String
+
+  """Parent document (for annotations)"""
+  document: MentionedResourceType
+}
+
+type ExtractType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  modified: DateTime!
+  corpus: CorpusType
+  documents(offset: Int, before: String, after: String, first: Int, last: Int): DocumentTypeConnection!
+  name: String!
+  fieldset: FieldsetType!
+  created: DateTime!
+  started: DateTime
+  finished: DateTime
+  error: String
+  corpusAction: CorpusActionType
+  rows(offset: Int, before: String, after: String, first: Int, last: Int): DocumentAnalysisRowTypeConnection!
+
+  """Extract created (for fieldset actions only)"""
+  executionRecords(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpus_Id: ID, corpusAction_Id: ID, document_Id: ID, status: CorpusesCorpusActionExecutionStatusChoices, actionType: CorpusesCorpusActionExecutionActionTypeChoices, trigger: CorpusesCorpusActionExecutionTriggerChoices, creator_Id: ID): CorpusActionExecutionTypeConnection!
+
+  """If set, this relationship is private to the extract that created it"""
+  createdRelationships(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+
+  """If set, this annotation is private to the extract that created it"""
+  createdAnnotations(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  extractedDatacells(offset: Int, before: String, after: String, first: Int, last: Int): DatacellTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+  fullDatacellList(
+    """
+    Maximum number of datacells to return. Use to bound payload size for extracts with many documents and columns. Returns all visible datacells if omitted.
+    """
+    limit: Int
+
+    """
+    Number of datacells to skip before applying `limit`. Use together with `limit` for client-driven pagination.
+    """
+    offset: Int
+  ): [DatacellType]
+  fullDocumentList: [DocumentType]
+
+  """
+  Total number of datacells in this extract visible to the current user, ignoring any `limit`/`offset` applied to `fullDatacellList`. Use together with `fullDatacellList(limit: ...)` to display 'showing N of M' indicators when the payload is bounded.
+  """
+  datacellCount: Int
+}
+
+type FieldsetType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  name: String!
+  description: String!
+
+  """If set, this fieldset defines the metadata schema for the corpus"""
+  corpus: CorpusType
+  corpusactionSet(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, name: String, name_Icontains: String, name_Istartswith: String, corpus_Id: ID, fieldset_Id: ID, analyzer_Id: ID, agentConfig_Id: ID, trigger: CorpusesCorpusActionTriggerChoices, creator_Id: ID): CorpusActionTypeConnection!
+  columns(offset: Int, before: String, after: String, first: Int, last: Int): ColumnTypeConnection!
+  extracts(offset: Int, before: String, after: String, first: Int, last: Int): ExtractTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+
+  """True if the fieldset is used in any extract that has started."""
+  inUse: Boolean
+  fullColumnList: [ColumnType]
+}
+
+type ColumnTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [ColumnTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `ColumnType` and its cursor."""
+type ColumnTypeEdge {
+  """The item at the end of the edge"""
+  node: ColumnType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type ColumnType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  name: String!
+  fieldset: FieldsetType!
+  query: String
+  matchText: String
+  mustContainText: String
+  outputType: String!
+  limitToLabel: String
+  instructions: String
+  extractIsList: Boolean!
+  taskName: String!
+
+  """Structured data type for manual entry fields"""
+  dataType: ExtractsColumnDataTypeChoices
+  validationConfig: GenericScalar
+
+  """True for manual metadata, False for extraction"""
+  isManualEntry: Boolean!
+  defaultValue: GenericScalar
+
+  """Help text to display for manual entry fields"""
+  helpText: String
+
+  """Order in which to display manual entry fields"""
+  displayOrder: Int!
+  extractedDatacells(offset: Int, before: String, after: String, first: Int, last: Int): DatacellTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+"""An enumeration."""
+enum ExtractsColumnDataTypeChoices {
+  """String"""
+  STRING
+
+  """Text (Multiline)"""
+  TEXT
+
+  """Boolean"""
+  BOOLEAN
+
+  """Integer"""
+  INTEGER
+
+  """Float"""
+  FLOAT
+
+  """Date"""
+  DATE
+
+  """DateTime"""
+  DATETIME
+
+  """URL"""
+  URL
+
+  """Email"""
+  EMAIL
+
+  """Choice (Select)"""
+  CHOICE
+
+  """Multiple Choice"""
+  MULTI_CHOICE
+
+  """JSON Object"""
+  JSON
+}
+
+type DatacellTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [DatacellTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `DatacellType` and its cursor."""
+type DatacellTypeEdge {
+  """The item at the end of the edge"""
+  node: DatacellType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type DatacellType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  extract: ExtractType
+  column: ColumnType!
+  document: DocumentType!
+  sources(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  data: GenericScalar
+  dataDefinition: String!
+  started: DateTime
+  completed: DateTime
+  failed: DateTime
+  stacktrace: String
+  approvedBy: UserType
+  rejectedBy: UserType
+  correctedData: GenericScalar
+
+  """Captured LLM message history for debugging extraction issues"""
+  llmCallLog: String
+  rows(offset: Int, before: String, after: String, first: Int, last: Int): DocumentAnalysisRowTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+  fullSourceList: [AnnotationType]
+}
+
+type ExtractTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [ExtractTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `ExtractType` and its cursor."""
+type ExtractTypeEdge {
+  """The item at the end of the edge"""
+  node: ExtractType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type RelationshipTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [RelationshipTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `RelationshipType` and its cursor."""
+type RelationshipTypeEdge {
+  """The item at the end of the edge"""
+  node: RelationshipType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type RelationshipType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  relationshipLabel: AnnotationLabelType
+  corpus: CorpusType
+  document: DocumentType
+  sourceAnnotations(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  targetAnnotations(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  analyzer: AnalyzerType
+  analysis: AnalysisType
+
+  """If set, this relationship is private to the analysis that created it"""
+  createdByAnalysis: AnalysisType
+
+  """If set, this relationship is private to the extract that created it"""
+  createdByExtract: ExtractType
+  structural: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  assignmentSet(offset: Int, before: String, after: String, first: Int, last: Int): AssignmentTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+type AnalysisType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  created: DateTime!
+  modified: DateTime!
+  isPublic: Boolean!
+  creator: UserType!
+  analyzer: AnalyzerType!
+  callbackToken: UUID!
+  receivedCallbackFile: String
+  analyzedCorpus: CorpusType
+  corpusAction: CorpusActionType
+  importLog: String
+  analyzedDocuments(offset: Int, before: String, after: String, first: Int, last: Int): DocumentTypeConnection!
+  errorMessage: String
+  errorTraceback: String
+  resultMessage: String
+  analysisStarted: DateTime
+  analysisCompleted: DateTime
+  status: AnalyzerAnalysisStatusChoices!
+  rows(offset: Int, before: String, after: String, first: Int, last: Int): DocumentAnalysisRowTypeConnection!
+
+  """Analysis created (for analyzer actions only)"""
+  executionRecords(offset: Int, before: String, after: String, first: Int, last: Int, id: ID, corpus_Id: ID, corpusAction_Id: ID, document_Id: ID, status: CorpusesCorpusActionExecutionStatusChoices, actionType: CorpusesCorpusActionExecutionActionTypeChoices, trigger: CorpusesCorpusActionExecutionTriggerChoices, creator_Id: ID): CorpusActionExecutionTypeConnection!
+  relationships(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+
+  """If set, this relationship is private to the analysis that created it"""
+  createdRelationships(offset: Int, before: String, after: String, first: Int, last: Int): RelationshipTypeConnection!
+  annotations(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+
+  """If set, this annotation is private to the analysis that created it"""
+  createdAnnotations(
+    offset: Int
+    before: String
+    after: String
+    first: Int
+    last: Int
+    rawText_Contains: String
+    annotationLabelId: ID
+    annotationLabel_Text: String
+    annotationLabel_Text_Contains: String
+    annotationLabel_Description_Contains: String
+    annotationLabel_LabelType: AnnotationsAnnotationLabelLabelTypeChoices
+    analysis_Isnull: Boolean
+    documentId: ID
+    corpusId: ID
+    structural: Boolean
+    usesLabelFromLabelsetId: String
+    createdByAnalysisIds: String
+    createdWithAnalyzerId: String
+
+    """Ordering"""
+    orderBy: String
+  ): AnnotationTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+  fullAnnotationList(documentId: ID): [AnnotationType]
+}
+
+"""An enumeration."""
+enum AnalyzerAnalysisStatusChoices {
+  """CREATED"""
+  CREATED
+
+  """QUEUED"""
+  QUEUED
+
+  """RUNNING"""
+  RUNNING
+
+  """COMPLETED"""
+  COMPLETED
+
+  """FAILED"""
+  FAILED
+}
+
+type NoteTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [NoteTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `NoteType` and its cursor."""
+type NoteTypeEdge {
+  """The item at the end of the edge"""
+  node: NoteType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""GraphQL type for the Note model with tree-based functionality."""
+type NoteType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  title: String!
+  content: String!
+  parent: NoteType
+  corpus: CorpusType
+  document: DocumentType!
+  annotation: AnnotationType
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  children(offset: Int, before: String, after: String, first: Int, last: Int): NoteTypeConnection!
+
+  """List of all revisions/versions of this note, ordered by version."""
+  revisions: [NoteRevisionType]
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+
+  """List of descendant notes, each with immediate children's IDs."""
+  descendantsTree: [GenericScalar]
+
+  """
+  List of notes from the root ancestor, each with immediate children's IDs.
+  """
+  fullTree: [GenericScalar]
+
+  """
+  List representing the path from the root ancestor to this note and its descendants.
+  """
+  subtree: [GenericScalar]
+
+  """Current version number of the note"""
+  currentVersion: Int
+}
+
+"""
+GraphQL type for the NoteRevision model to expose note version history.
+"""
+type NoteRevisionType implements Node {
+  """The ID of the object"""
+  id: ID!
+  note: NoteType!
+  author: UserType
+  version: Int!
+  diff: String!
+  snapshot: String
+  checksumBase: String!
+  checksumFull: String!
+  created: DateTime!
+}
+
+type AnalysisTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [AnalysisTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `AnalysisType` and its cursor."""
+type AnalysisTypeEdge {
+  """The item at the end of the edge"""
+  node: AnalysisType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type ConversationTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [ConversationTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `ConversationType` and its cursor."""
+type ConversationTypeEdge {
+  """The item at the end of the edge"""
+  node: ConversationType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type BadgeTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [BadgeTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `BadgeType` and its cursor."""
+type BadgeTypeEdge {
+  """The item at the end of the edge"""
+  node: BadgeType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""GraphQL type for badges."""
+type BadgeType implements Node {
+  """The ID of the object"""
+  id: ID!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+
+  """Unique name for the badge"""
+  name: String!
+
+  """Description of what this badge represents or how to earn it"""
+  description: String!
+
+  """Icon identifier from lucide-react (e.g., 'Trophy', 'Star', 'Award')"""
+  icon: String!
+
+  """Whether this badge is global or corpus-specific"""
+  badgeType: BadgesBadgeBadgeTypeChoices!
+
+  """Hex color code for badge display"""
+  color: String!
+
+  """If badge_type is CORPUS, the corpus this badge belongs to"""
+  corpus: CorpusType
+
+  """Whether this badge is automatically awarded based on criteria"""
+  isAutoAwarded: Boolean!
+
+  """
+  JSON configuration for auto-award criteria. Example: {'type': 'reputation_threshold', 'value': 100, 'scope': 'global'}
+  """
+  criteriaConfig: JSONString
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+"""An enumeration."""
+enum BadgesBadgeBadgeTypeChoices {
+  """Global"""
+  GLOBAL
+
+  """Corpus-Specific"""
+  CORPUS
+}
+
+type UserBadgeTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [UserBadgeTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `UserBadgeType` and its cursor."""
+type UserBadgeTypeEdge {
+  """The item at the end of the edge"""
+  node: UserBadgeType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""GraphQL type for user badge awards."""
+type UserBadgeType implements Node {
+  """The ID of the object"""
+  id: ID!
+
+  """User who received the badge"""
+  user: UserType!
+
+  """Badge that was awarded"""
+  badge: BadgeType!
+
+  """When the badge was awarded"""
+  awardedAt: DateTime!
+
+  """User who awarded the badge (null for auto-awards)"""
+  awardedBy: UserType
+
+  """For corpus-specific badges, the context in which it was awarded"""
+  corpus: CorpusType
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+enum LabelTypeEnum {
+  RELATIONSHIP_LABEL
+  DOC_TYPE_LABEL
+  TOKEN_LABEL
+  SPAN_LABEL
+}
+
+type LabelSetTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [LabelSetTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `LabelSetType` and its cursor."""
+type LabelSetTypeEdge {
+  """The item at the end of the edge"""
+  node: LabelSetType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type UserFeedbackTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [UserFeedbackTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `UserFeedbackType` and its cursor."""
+type UserFeedbackTypeEdge {
+  """The item at the end of the edge"""
+  node: UserFeedbackType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type UserFeedbackType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  approved: Boolean!
+  rejected: Boolean!
+  comment: String!
+  markdown: String!
+  metadata: JSONString
+  commentedAnnotation: AnnotationType
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+"""Complete version history for a document."""
+type VersionHistoryType {
+  """All versions of this document"""
+  versions: [DocumentVersionType!]!
+
+  """The current active version"""
+  currentVersion: DocumentVersionType!
+
+  """Tree structure of version relationships"""
+  versionTree: GenericScalar
+}
+
+"""Represents a single version in the document's content history."""
+type DocumentVersionType {
+  """Global ID of the document version"""
+  id: ID!
+
+  """Sequential version number"""
+  versionNumber: Int!
+
+  """SHA-256 hash of PDF content"""
+  hash: String!
+
+  """When version was created"""
+  createdAt: DateTime!
+
+  """User who created this version"""
+  createdBy: UserType!
+
+  """File size in bytes"""
+  sizeBytes: Int
+
+  """Type of change from previous version"""
+  changeType: VersionChangeTypeEnum!
+
+  """Previous version in content tree"""
+  parentVersion: DocumentVersionType
+}
+
+"""Enum for types of version changes."""
+enum VersionChangeTypeEnum {
+  INITIAL
+  CONTENT_UPDATE
+  MINOR_EDIT
+  MAJOR_REVISION
+}
+
+"""Complete path history for a document in a corpus."""
+type PathHistoryType {
+  """All path events in chronological order"""
+  events: [PathEventType!]!
+
+  """Current path of document"""
+  currentPath: String!
+
+  """Original import path"""
+  originalPath: String!
+
+  """Number of move/rename operations"""
+  moveCount: Int!
+}
+
+"""A single event in the document's path history."""
+type PathEventType {
+  """Global ID of the path event"""
+  id: ID!
+
+  """Type of path action"""
+  action: PathActionEnum!
+
+  """Path at time of event"""
+  path: String!
+
+  """Folder at time of event (null if at root)"""
+  folder: CorpusFolderType
+
+  """When this event occurred"""
+  timestamp: DateTime!
+
+  """User who performed the action"""
+  user: UserType!
+
+  """Content version at time of event"""
+  versionNumber: Int!
+}
+
+type UserExportTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [UserExportTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `UserExportType` and its cursor."""
+type UserExportTypeEdge {
+  """The item at the end of the edge"""
+  node: UserExportType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type UserExportType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  modified: DateTime!
+  file: String!
+  name: String
+  created: DateTime!
+  started: DateTime
+  finished: DateTime
+  errors: String!
+
+  """List of fully qualified Python paths to post-processor functions"""
+  postProcessors: JSONString!
+
+  """Additional keyword arguments to pass to post-processors"""
+  inputKwargs: JSONString
+  format: UsersUserExportFormatChoices!
+  backendLock: Boolean!
+  isPublic: Boolean!
+  creator: UserType!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+"""An enumeration."""
+enum UsersUserExportFormatChoices {
+  """LANGCHAIN"""
+  LANGCHAIN
+
+  """OPEN_CONTRACTS"""
+  OPEN_CONTRACTS
+
+  """FUNSD"""
+  FUNSD
+}
+
+type UserImportTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [UserImportTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `UserImportType` and its cursor."""
+type UserImportTypeEdge {
+  """The item at the end of the edge"""
+  node: UserImportType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type UserImportType implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  modified: DateTime!
+  zip: String!
+  name: String
+  created: DateTime!
+  started: DateTime
+  finished: DateTime
+  errors: String!
+  isPublic: Boolean!
+  creator: UserType!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+type CorpusCategoryTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [CorpusCategoryTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `CorpusCategoryType` and its cursor."""
+type CorpusCategoryTypeEdge {
+  """The item at the end of the edge"""
+  node: CorpusCategoryType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type CorpusFolderTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [CorpusFolderTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `CorpusFolderType` and its cursor."""
+type CorpusFolderTypeEdge {
+  """The item at the end of the edge"""
+  node: CorpusFolderType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type NoteRevisionTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [NoteRevisionTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `NoteRevisionType` and its cursor."""
+type NoteRevisionTypeEdge {
+  """The item at the end of the edge"""
+  node: NoteRevisionType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type GremlinEngineType_WRITEConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [GremlinEngineType_WRITEEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `GremlinEngineType_WRITE` and its cursor."""
+type GremlinEngineType_WRITEEdge {
+  """The item at the end of the edge"""
+  node: GremlinEngineType_WRITE
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type FieldsetTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [FieldsetTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `FieldsetType` and its cursor."""
+type FieldsetTypeEdge {
+  """The item at the end of the edge"""
+  node: FieldsetType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""An enumeration."""
+enum LabelType {
+  DOC_TYPE_LABEL
+  TOKEN_LABEL
+  RELATIONSHIP_LABEL
+  SPAN_LABEL
+}
+
+type PageAwareAnnotationType {
+  pdfPageInfo: PdfPageInfoType
+  pageAnnotations: [AnnotationType]
+}
+
+type PdfPageInfoType {
+  pageCount: Int
+  currentPage: Int
+  hasNextPage: Boolean
+  hasPreviousPage: Boolean
+  corpusId: ID
+  documentId: ID
+  forAnalysisIds: String
+  labelType: String
+}
+
+type UserTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [UserTypeEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `UserType` and its cursor."""
+type UserTypeEdge {
+  """The item at the end of the edge"""
+  node: UserType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type GremlinEngineType_READ implements Node {
+  """The ID of the object"""
+  id: ID!
+  userLock: UserType
+  backendLock: Boolean!
+  creator: UserType!
+  created: DateTime!
+  modified: DateTime!
+  url: String!
+  lastSynced: DateTime
+  installStarted: DateTime
+  installCompleted: DateTime
+  isPublic: Boolean!
+  analyzerSet(offset: Int, before: String, after: String, first: Int, last: Int): AnalyzerTypeConnection!
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+}
+
+type GremlinEngineType_READConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [GremlinEngineType_READEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `GremlinEngineType_READ` and its cursor."""
+type GremlinEngineType_READEdge {
+  """The item at the end of the edge"""
+  node: GremlinEngineType_READ
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+type CorpusStatsType {
+  totalDocs: Int
+  totalAnnotations: Int
+  totalComments: Int
+  totalAnalyses: Int
+  totalExtracts: Int
+  totalThreads: Int
+  totalChats: Int
+  totalRelationships: Int
+}
+
+type DocumentCorpusActionsType {
+  corpusActions: [CorpusActionType]
+  extracts: [ExtractType]
+  analysisRows: [DocumentAnalysisRowType]
+}
+
+"""Graphene type for grouping pipeline components."""
+type PipelineComponentsType {
+  """List of available parsers."""
+  parsers: [PipelineComponentType]
+
+  """List of available embedders."""
+  embedders: [PipelineComponentType]
+
+  """List of available thumbnail generators."""
+  thumbnailers: [PipelineComponentType]
+
+  """List of available post-processors."""
+  postProcessors: [PipelineComponentType]
+}
+
+"""Graphene type for pipeline components."""
+type PipelineComponentType {
+  """Name of the component class."""
+  name: String
+
+  """Full Python path to the component class."""
+  className: String
+
+  """Name of the module the component is in."""
+  moduleName: String
+
+  """Title of the component."""
+  title: String
+
+  """Description of the component."""
+  description: String
+
+  """Author of the component."""
+  author: String
+
+  """List of dependencies required by the component."""
+  dependencies: [String]
+
+  """Vector size for embedders."""
+  vectorSize: Int
+
+  """List of supported file types."""
+  supportedFileTypes: [FileTypeEnum]
+
+  """Type of the component (parser, embedder, or thumbnailer)."""
+  componentType: String
+
+  """
+  JSONSchema schema for inputs supported from user (experimental - not fully implemented).
+  """
+  inputSchema: GenericScalar
+
+  """Whether this embedder supports multiple modalities (text + images)."""
+  isMultimodal: Boolean
+
+  """Whether this embedder supports text input."""
+  supportsText: Boolean
+
+  """Whether this embedder supports image input."""
+  supportsImages: Boolean
+}
+
+"""Graphene enum for FileTypeEnum."""
+enum FileTypeEnum {
+  PDF
+  TXT
+  DOCX
+}
+
+"""
+Connection class for ConversationType used in searchConversations query.
+"""
+type ConversationConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+
+  """Contains the nodes in this connection."""
+  edges: [ConversationEdge]!
+  totalCount: Int
+}
+
+"""A Relay edge containing a `Conversation` and its cursor."""
+type ConversationEdge {
+  """The item at the end of the edge"""
+  node: ConversationType
+
+  """A cursor for use in pagination"""
+  cursor: String!
+}
+
+"""
+Result type for semantic (vector) search across annotations.
+
+Returns annotation matches with their similarity scores, enabling
+relevance-ranked search results from the global embeddings.
+
+PERMISSION MODEL:
+- Uses Document.objects.visible_to_user() for document access control
+- Structural annotations visible if document is accessible
+- Non-structural annotations visible if public OR owned by user
+"""
+type SemanticSearchResultType {
+  """The matched annotation"""
+  annotation: AnnotationType!
+
+  """Similarity score (0.0-1.0, higher is more similar)"""
+  similarityScore: Float!
+
+  """The document containing this annotation (for convenience)"""
+  document: DocumentType
+
+  """The corpus containing this annotation, if any"""
+  corpus: CorpusType
+}
+
+"""Aggregated moderation metrics for monitoring."""
+type ModerationMetricsType {
+  totalActions: Int
+  automatedActions: Int
+  manualActions: Int
+  actionsByType: GenericScalar
+  hourlyActionRate: Float
+  isAboveThreshold: Boolean
+  thresholdExceededTypes: [String]
+  timeRangeHours: Int
+  startTime: DateTime
+  endTime: DateTime
+}
+
+"""Aggregated statistics for corpus action trail."""
+type CorpusActionTrailStatsType {
+  totalExecutions: Int
+  completed: Int
+  failed: Int
+  running: Int
+  queued: Int
+  skipped: Int
+  avgDurationSeconds: Float
+  fieldsetCount: Int
+  analyzerCount: Int
+  agentCount: Int
+}
+
+"""Type for checking the status of a bulk document upload job"""
+type BulkDocumentUploadStatusType {
+  jobId: String
+  success: Boolean
+  totalFiles: Int
+  processedFiles: Int
+  skippedFiles: Int
+  errorFiles: Int
+  documentIds: [String]
+  errors: [String]
+  completed: Boolean
+}
+
+"""Type for metadata completion status information."""
+type MetadataCompletionStatusType {
+  totalFields: Int
+  filledFields: Int
+  missingFields: Int
+  percentage: Float
+  missingRequired: [String]
+}
+
+"""Type for batch metadata query results - groups datacells by document."""
+type DocumentMetadataResultType {
+  """The document's global ID"""
+  documentId: ID
+
+  """Metadata datacells for this document"""
+  datacells: [DatacellType]
+}
+
+"""GraphQL type for criteria type definition from the registry."""
+type CriteriaTypeDefinitionType {
+  """Unique identifier for this criteria type"""
+  typeId: String!
+
+  """Display name for UI"""
+  name: String!
+
+  """Explanation of what this criteria checks"""
+  description: String!
+
+  """Where this criteria can be used: 'global', 'corpus', or 'both'"""
+  scope: String!
+
+  """Configuration fields required for this criteria type"""
+  fields: [CriteriaFieldType!]!
+
+  """Whether the evaluation logic is implemented"""
+  implemented: Boolean!
+}
+
+"""GraphQL type for criteria field definition from the registry."""
+type CriteriaFieldType {
+  """Field identifier used in criteria_config JSON"""
+  name: String!
+
+  """Human-readable label for UI display"""
+  label: String!
+
+  """Field data type: 'number', 'text', or 'boolean'"""
+  fieldType: String!
+
+  """Whether this field must be present in configuration"""
+  required: Boolean!
+
+  """Help text explaining the field's purpose"""
+  description: String
+
+  """Minimum allowed value (for number fields only)"""
+  minValue: Int
+
+  """Maximum allowed value (for number fields only)"""
+  maxValue: Int
+
+  """List of allowed values (for enum-like text fields)"""
+  allowedValues: [String]
+}
+
+"""
+GraphQL type for available tools that can be assigned to agents.
+
+This provides metadata about each tool, including its description,
+category, and requirements.
+"""
+type AvailableToolType {
+  """Tool name (used in configuration)"""
+  name: String!
+
+  """Human-readable description of the tool"""
+  description: String!
+
+  """
+  Tool category (search, document, corpus, notes, annotations, coordination)
+  """
+  category: String!
+
+  """Whether this tool requires a corpus context"""
+  requiresCorpus: Boolean!
+
+  """Whether this tool requires user approval before execution"""
+  requiresApproval: Boolean!
+
+  """List of parameters accepted by this tool"""
+  parameters: [ToolParameterType!]!
+}
+
+"""GraphQL type for tool parameter definitions."""
+type ToolParameterType {
+  """Parameter name"""
+  name: String!
+
+  """Parameter description"""
+  description: String!
+
+  """Whether the parameter is required"""
+  required: Boolean!
+}
+
+"""
+Complete leaderboard with entries and metadata.
+
+Issue: #613 - Create leaderboard and community stats dashboard
+Epic: #572 - Social Features Epic
+"""
+type LeaderboardType {
+  """The metric this leaderboard is sorted by"""
+  metric: LeaderboardMetricEnum
+
+  """The time period for this leaderboard"""
+  scope: LeaderboardScopeEnum
+
+  """If corpus-specific leaderboard, the corpus ID"""
+  corpusId: ID
+
+  """Total number of users in leaderboard"""
+  totalUsers: Int
+
+  """Leaderboard entries in rank order"""
+  entries: [LeaderboardEntryType]
+
+  """Current user's rank in this leaderboard (null if not ranked)"""
+  currentUserRank: Int
+}
+
+"""
+Enum for different leaderboard metrics.
+
+Issue: #613 - Create leaderboard and community stats dashboard
+Epic: #572 - Social Features Epic
+"""
+enum LeaderboardMetricEnum {
+  BADGES
+  MESSAGES
+  THREADS
+  ANNOTATIONS
+  REPUTATION
+}
+
+"""
+Enum for leaderboard scope (time period or corpus).
+
+Issue: #613 - Create leaderboard and community stats dashboard
+"""
+enum LeaderboardScopeEnum {
+  ALL_TIME
+  MONTHLY
+  WEEKLY
+}
+
+"""
+Represents a single entry in the leaderboard.
+
+Issue: #613 - Create leaderboard and community stats dashboard
+Epic: #572 - Social Features Epic
+"""
+type LeaderboardEntryType {
+  """The user in this leaderboard entry"""
+  user: UserType
+
+  """User's rank in the leaderboard (1-indexed)"""
+  rank: Int
+
+  """User's score for this metric"""
+  score: Int
+
+  """Total badges earned by user"""
+  badgeCount: Int
+
+  """Total messages posted by user"""
+  messageCount: Int
+
+  """Total threads created by user"""
+  threadCount: Int
+
+  """Total annotations created by user"""
+  annotationCount: Int
+
+  """User's reputation score"""
+  reputation: Int
+
+  """True if user has shown significant recent activity"""
+  isRisingStar: Boolean
+}
+
+"""
+Overall community engagement statistics.
+
+Issue: #613 - Create leaderboard and community stats dashboard
+Epic: #572 - Social Features Epic
+"""
+type CommunityStatsType {
+  """Total number of active users"""
+  totalUsers: Int
+
+  """Total messages posted"""
+  totalMessages: Int
+
+  """Total threads created"""
+  totalThreads: Int
+
+  """Total annotations created"""
+  totalAnnotations: Int
+
+  """Total badge awards"""
+  totalBadgesAwarded: Int
+
+  """Badge distribution across users"""
+  badgeDistribution: [BadgeDistributionType]
+
+  """Messages posted in last 7 days"""
+  messagesThisWeek: Int
+
+  """Messages posted in last 30 days"""
+  messagesThisMonth: Int
+
+  """Users who posted in last 7 days"""
+  activeUsersThisWeek: Int
+
+  """Users who posted in last 30 days"""
+  activeUsersThisMonth: Int
+}
+
+"""
+Statistics about badge distribution across users.
+
+Issue: #613 - Create leaderboard and community stats dashboard
+Epic: #572 - Social Features Epic
+"""
+type BadgeDistributionType {
+  """The badge"""
+  badge: BadgeType
+
+  """Number of times this badge has been awarded"""
+  awardCount: Int
+
+  """Number of unique users who have earned this badge"""
+  uniqueRecipients: Int
+}
+
+"""
+Minimal corpus metadata for Open Graph previews - public entities only.
+"""
+type OGCorpusMetadataType {
+  """Corpus title"""
+  title: String
+
+  """Corpus description (truncated)"""
+  description: String
+
+  """URL to corpus icon/thumbnail"""
+  iconUrl: String
+
+  """Number of documents in corpus"""
+  documentCount: Int
+
+  """Username of corpus creator"""
+  creatorName: String
+
+  """Always True for returned entities"""
+  isPublic: Boolean
+}
+
+"""
+Minimal document metadata for Open Graph previews - public entities only.
+"""
+type OGDocumentMetadataType {
+  """Document title"""
+  title: String
+
+  """Document description (truncated)"""
+  description: String
+
+  """URL to document thumbnail"""
+  iconUrl: String
+
+  """Title of parent corpus (if document is in a corpus)"""
+  corpusTitle: String
+
+  """Username of document creator"""
+  creatorName: String
+
+  """Always True for returned entities"""
+  isPublic: Boolean
+}
+
+"""Minimal discussion thread metadata for Open Graph previews."""
+type OGThreadMetadataType {
+  """Thread title or default 'Discussion'"""
+  title: String
+
+  """Title of parent corpus"""
+  corpusTitle: String
+
+  """Number of messages in thread"""
+  messageCount: Int
+
+  """Username of thread creator"""
+  creatorName: String
+
+  """Always True for returned entities"""
+  isPublic: Boolean
+}
+
+"""Minimal extract metadata for Open Graph previews."""
+type OGExtractMetadataType {
+  """Extract name"""
+  name: String
+
+  """Title of source corpus"""
+  corpusTitle: String
+
+  """Name of fieldset used for extraction"""
+  fieldsetName: String
+
+  """Username of extract creator"""
+  creatorName: String
+
+  """Always True for returned entities"""
+  isPublic: Boolean
+}
+
+type Mutation {
+  """Obtain JSON Web Token mutation"""
+  tokenAuth(username: String!, password: String!): ObtainJSONWebToken
+  verifyToken(token: String): Verify
+  refreshToken(refreshToken: String): Refresh
+  addAnnotation(
+    """Id of the label that is applied via this annotation."""
+    annotationLabelId: String!
+    annotationType: LabelType!
+
+    """ID of the corpus this annotation is for."""
+    corpusId: String!
+
+    """Id of the document this annotation is on."""
+    documentId: String!
+
+    """New-style JSON for multipage annotations"""
+    json: GenericScalar!
+
+    """What page is this annotation on (0-indexed)"""
+    page: Int!
+
+    """What is the raw text of the annotation?"""
+    rawText: String!
+  ): AddAnnotation
+  removeAnnotation(
+    """Id of the annotation that is to be deleted."""
+    annotationId: String!
+  ): RemoveAnnotation
+  updateAnnotation(annotationLabel: String, id: String!, json: GenericScalar, page: Int, rawText: String): UpdateAnnotation
+  addDocTypeAnnotation(
+    """Id of the label that is applied via this annotation."""
+    annotationLabelId: String!
+
+    """ID of the corpus this annotation is for."""
+    corpusId: String!
+
+    """Id of the document this annotation is on."""
+    documentId: String!
+  ): AddDocTypeAnnotation
+  removeDocTypeAnnotation(
+    """Id of the annotation that is to be deleted."""
+    annotationId: String!
+  ): RemoveAnnotation
+  approveAnnotation(
+    """ID of the annotation to approve"""
+    annotationId: ID!
+
+    """Optional comment for the approval"""
+    comment: String
+  ): ApproveAnnotation
+  rejectAnnotation(
+    """ID of the annotation to reject"""
+    annotationId: ID!
+
+    """Optional comment for the rejection"""
+    comment: String
+  ): RejectAnnotation
+  addRelationship(
+    """ID of the corpus for this relationship."""
+    corpusId: String!
+
+    """ID of the document for this relationship."""
+    documentId: String!
+
+    """ID of the label for this relationship."""
+    relationshipLabelId: String!
+
+    """List of ids of the tokens in the source annotation"""
+    sourceIds: [String]!
+
+    """List of ids of the target tokens in the label"""
+    targetIds: [String]!
+  ): AddRelationship
+  removeRelationship(
+    """Id of the relationship that is to be deleted."""
+    relationshipId: String!
+  ): RemoveRelationship
+  removeRelationships(relationshipIds: [String]): RemoveRelationships
+
+  """
+  Update an existing relationship by adding or removing annotations
+  from source or target sets.
+  """
+  updateRelationship(
+    """List of annotation IDs to add as sources"""
+    addSourceIds: [String]
+
+    """List of annotation IDs to add as targets"""
+    addTargetIds: [String]
+
+    """ID of the relationship to update"""
+    relationshipId: String!
+
+    """List of annotation IDs to remove from sources"""
+    removeSourceIds: [String]
+
+    """List of annotation IDs to remove from targets"""
+    removeTargetIds: [String]
+  ): UpdateRelationship
+  updateRelationships(relationships: [RelationInputType]): UpdateRelations
+
+  """
+  Create a new relationship between two documents in the same corpus.
+
+  Permission requirements:
+  - User must have CREATE permission on BOTH source and target documents
+  - User must have CREATE permission on the corpus
+
+  Validation:
+  - Both documents must be in the specified corpus
+  - For RELATIONSHIP type: annotation_label_id is required
+  - For NOTES type: annotation_label_id is optional
+  """
+  createDocumentRelationship(
+    """ID of the annotation label (required for RELATIONSHIP type)"""
+    annotationLabelId: String
+
+    """ID of the corpus (both documents must be in this corpus)"""
+    corpusId: String!
+
+    """JSON data payload (e.g., for notes content)"""
+    data: GenericScalar
+
+    """Type of relationship: 'RELATIONSHIP' or 'NOTES'"""
+    relationshipType: String!
+
+    """ID of the source document"""
+    sourceDocumentId: String!
+
+    """ID of the target document"""
+    targetDocumentId: String!
+  ): CreateDocumentRelationship
+
+  """
+  Update an existing document relationship.
+
+  Permission requirements:
+  - User must have UPDATE permission on the document relationship
+  - OR UPDATE permission on BOTH source and target documents
+
+  Updatable fields:
+  - relationship_type (with validation for annotation_label requirement)
+  - annotation_label_id
+  - data (JSON payload)
+  - corpus_id
+  """
+  updateDocumentRelationship(
+    """New annotation label ID"""
+    annotationLabelId: String
+
+    """New corpus ID"""
+    corpusId: String
+
+    """Updated JSON data payload"""
+    data: GenericScalar
+
+    """ID of the document relationship to update"""
+    documentRelationshipId: String!
+
+    """New relationship type: 'RELATIONSHIP' or 'NOTES'"""
+    relationshipType: String
+  ): UpdateDocumentRelationship
+
+  """
+  Delete a document relationship.
+
+  Permission requirements:
+  - User must have DELETE permission on the document relationship
+  - OR DELETE permission on BOTH source and target documents
+  """
+  deleteDocumentRelationship(
+    """ID of the document relationship to delete"""
+    documentRelationshipId: String!
+  ): DeleteDocumentRelationship
+
+  """
+  Delete multiple document relationships at once.
+
+  Permission requirements:
+  - User must have DELETE permission on each document relationship
+  """
+  deleteDocumentRelationships(
+    """List of document relationship IDs to delete"""
+    documentRelationshipIds: [String]!
+  ): DeleteDocumentRelationships
+  createLabelset(
+    """Base64-encoded file string for the Labelset icon (optional)."""
+    base64IconString: String
+
+    """Description of the Labelset."""
+    description: String
+
+    """Filename of the document."""
+    filename: String
+
+    """Title of the Labelset."""
+    title: String!
+  ): CreateLabelset
+  updateLabelset(
+    """Description of the Labelset."""
+    description: String
+
+    """Base64-encoded file string for the Labelset icon (optional)."""
+    icon: String
+    id: String!
+
+    """Title of the Labelset."""
+    title: String!
+  ): UpdateLabelset
+  deleteLabelset(id: String!): DeleteLabelset
+  createAnnotationLabel(color: String, description: String, icon: String, text: String, type: String): CreateLabelMutation
+  updateAnnotationLabel(color: String, description: String, icon: String, id: String!, labelType: String, text: String): UpdateLabelMutation
+  deleteAnnotationLabel(id: String!): DeleteLabelMutation
+  deleteMultipleAnnotationLabels(
+    """List of ids of the labels to delete"""
+    annotationLabelIdsToDelete: [String]!
+  ): DeleteMultipleLabelMutation
+  createAnnotationLabelForLabelset(
+    color: String
+    description: String
+    icon: String
+    labelType: String
+
+    """Id of the label that is to be updated."""
+    labelsetId: String!
+    text: String
+  ): CreateLabelForLabelsetMutation
+  removeAnnotationLabelsFromLabelset(
+    """List of Ids of the labels to be deleted."""
+    labelIds: [String]!
+    labelsetId: String! = "Id of the labelset to delete the labels from"
+  ): RemoveLabelsFromLabelsetMutation
+
+  """
+  Smart mutation that handles label search and creation with automatic labelset management.
+
+  This mutation encapsulates the following logic:
+  1. If no labelset exists for the corpus and createIfNotFound is true:
+     - Creates a new labelset
+     - Assigns it to the corpus
+     - Creates the label in the new labelset
+
+  2. If labelset exists:
+     - Searches for existing labels matching the search term
+     - If matches found: returns the matching labels
+     - If no matches and createIfNotFound is true: creates the label
+     - If no matches and createIfNotFound is false: returns empty list
+  """
+  smartLabelSearchOrCreate(
+    """Color for new label (if created)"""
+    color: String = "#1a75bc"
+
+    """ID of the corpus to work with"""
+    corpusId: String!
+
+    """Whether to create label/labelset if not found"""
+    createIfNotFound: Boolean = false
+
+    """Description for new label (if created)"""
+    description: String = ""
+
+    """Icon for new label (if created)"""
+    icon: String = "tag"
+
+    """The type of label (SPAN_LABEL, TOKEN_LABEL, etc.)"""
+    labelType: String!
+
+    """Description for new labelset (if created)"""
+    labelsetDescription: String = ""
+
+    """
+    Title for new labelset (if created). Defaults to corpus title + ' Labels'
+    """
+    labelsetTitle: String
+
+    """The label text to search for or create"""
+    searchTerm: String!
+  ): SmartLabelSearchOrCreateMutation
+
+  """
+  Simplified mutation to get all available labels for a corpus with helpful status info.
+  """
+  smartLabelList(
+    """ID of the corpus"""
+    corpusId: String!
+
+    """Optional filter by label type"""
+    labelType: String
+  ): SmartLabelListMutation
+  uploadDocument(
+    """
+    If provided, successfully uploaded document will be uploaded to corpus with specified id
+    """
+    addToCorpusId: ID
+
+    """
+    If provided, successfully uploaded document will be added to extract with specified id
+    """
+    addToExtractId: ID
+
+    """
+    If provided along with add_to_corpus_id, the document will be assigned to this folder within the corpus
+    """
+    addToFolderId: ID
+
+    """Base64-encoded file string for the file."""
+    base64FileString: String!
+
+    """"""
+    customMeta: GenericScalar
+
+    """Description of the document."""
+    description: String!
+
+    """Filename of the document."""
+    filename: String!
+
+    """If True, document is immediately public. Defaults to False."""
+    makePublic: Boolean!
+    slug: String
+
+    """Title of the document."""
+    title: String!
+  ): UploadDocument
+  updateDocument(customMeta: GenericScalar, description: String, id: String!, pdfFile: String, slug: String, title: String): UpdateDocument
+
+  """
+  Mutation to update a document's markdown summary for a specific corpus, creating a new version in the process.
+  Users can create/update summaries if:
+  - No summary exists yet and they have permission on the corpus (public or their corpus)
+  - A summary exists and they are the original author
+  """
+  updateDocumentSummary(
+    """ID of the corpus this summary is for"""
+    corpusId: ID!
+
+    """ID of the document to update"""
+    documentId: ID!
+
+    """New markdown content for the document summary"""
+    newContent: String!
+  ): UpdateDocumentSummary
+  deleteDocument(id: String!): DeleteDocument
+  deleteMultipleDocuments(
+    """List of ids of the documents to delete"""
+    documentIdsToDelete: [String]!
+  ): DeleteMultipleDocuments
+
+  """
+  Mutation for uploading multiple documents via a zip file.
+  The zip is stored as a temporary file and processed asynchronously.
+  Only files with allowed MIME types will be created as documents.
+  """
+  uploadDocumentsZip(
+    """
+    If provided, successfully uploaded documents will be added to corpus with specified id
+    """
+    addToCorpusId: ID
+
+    """Base64-encoded zip file containing documents to upload"""
+    base64FileString: String!
+
+    """Optional metadata to apply to all documents"""
+    customMeta: GenericScalar
+
+    """Optional description to apply to all documents"""
+    description: String
+
+    """If True, documents are immediately public. Defaults to False."""
+    makePublic: Boolean!
+
+    """Optional prefix for document titles (will be combined with filename)"""
+    titlePrefix: String
+  ): UploadDocumentsZip
+
+  """
+  Restore a soft-deleted document path within a corpus.
+
+  Delegates to DocumentLifecycleService.restore_document() for:
+  - Permission checking (corpus UPDATE permission)
+  - Creating new DocumentPath with is_deleted=False
+  """
+  restoreDeletedDocument(
+    """Global ID of the corpus"""
+    corpusId: String!
+
+    """Global ID of the document to restore"""
+    documentId: String!
+  ): RestoreDeletedDocument
+
+  """
+  Restore a document to a previous content version.
+  Creates a new version that is a copy of the specified version.
+  """
+  restoreDocumentToVersion(
+    """Global ID of the corpus"""
+    corpusId: String!
+
+    """Global ID of the document version to restore to"""
+    documentId: String!
+  ): RestoreDocumentToVersion
+
+  """
+  Permanently delete a soft-deleted document from a corpus.
+
+  This is IRREVERSIBLE and removes:
+  - All DocumentPath history for the document in this corpus
+  - User annotations (non-structural) on the document
+  - Relationships involving those annotations
+  - DocumentSummaryRevision records
+  - The Document itself if no other corpus references it
+
+  Requires DELETE permission on the corpus.
+  """
+  permanentlyDeleteDocument(
+    """Global ID of the corpus"""
+    corpusId: String!
+
+    """Global ID of the document to permanently delete"""
+    documentId: String!
+  ): PermanentlyDeleteDocument
+
+  """
+  Permanently delete ALL soft-deleted documents in a corpus (empty trash).
+
+  This is IRREVERSIBLE and removes all documents currently in the corpus trash.
+
+  Requires DELETE permission on the corpus.
+  """
+  emptyTrash(
+    """Global ID of the corpus to empty trash for"""
+    corpusId: String!
+  ): EmptyTrash
+  forkCorpus(
+    """Graphene id of the corpus you want to package for export"""
+    corpusId: String!
+  ): StartCorpusFork
+
+  """
+  Set corpus visibility (public/private).
+
+  Requires one of:
+  - User is the corpus creator (owner), OR
+  - User has PERMISSION permission on the corpus, OR
+  - User is superuser
+
+  Security notes:
+  - Permission check prevents users from escalating access
+  - Uses existing make_corpus_public_task for cascading public visibility
+  - Making private only affects the corpus flag (child objects remain public)
+  """
+  setCorpusVisibility(
+    """ID of the corpus to change visibility for"""
+    corpusId: ID!
+
+    """True to make public, False to make private"""
+    isPublic: Boolean!
+  ): SetCorpusVisibility
+  createCorpus(
+    """Category IDs to assign"""
+    categories: [ID]
+    description: String
+    icon: String
+    labelSet: String
+    preferredEmbedder: String
+    slug: String
+    title: String
+  ): CreateCorpusMutation
+  updateCorpus(
+    """Category IDs to assign (replaces existing)"""
+    categories: [ID]
+    corpusAgentInstructions: String
+    description: String
+    documentAgentInstructions: String
+    icon: String
+    id: String!
+    labelSet: String
+    preferredEmbedder: String
+    slug: String
+    title: String
+  ): UpdateCorpusMutation
+
+  """Update basic profile fields for the current user, including slug."""
+  updateMe(firstName: String, isProfilePublic: Boolean, lastName: String, name: String, phone: String, slug: String): UpdateMe
+
+  """
+  Mutation to update a corpus's markdown description, creating a new version in the process.
+  Only the corpus creator can update the description.
+  """
+  updateCorpusDescription(
+    """ID of the corpus to update"""
+    corpusId: ID!
+
+    """New markdown content for the corpus description"""
+    newContent: String!
+  ): UpdateCorpusDescription
+  deleteCorpus(id: String!): DeleteCorpusMutation
+
+  """
+  Add existing documents to a corpus.
+
+  Delegates to CorpusDocumentService.add_documents_to_corpus() for:
+  - Permission checking (corpus UPDATE permission)
+  - Document validation (user owns or public)
+  - Dual-system update (DocumentPath + corpus.add_document)
+  """
+  linkDocumentsToCorpus(
+    """ID of corpus to add documents to."""
+    corpusId: String!
+
+    """List of ids of the docs to add to corpus."""
+    documentIds: [String]!
+  ): AddDocumentsToCorpus
+
+  """
+  Remove documents from a corpus (soft-delete).
+
+  Delegates to CorpusDocumentService.remove_documents_from_corpus() for:
+  - Permission checking (corpus UPDATE permission)
+  - Soft-delete via DocumentPath (creates is_deleted=True record)
+  - Audit trail
+  """
+  removeDocumentsFromCorpus(
+    """ID of corpus to remove documents from."""
+    corpusId: String!
+
+    """List of ids of the docs to remove from corpus."""
+    documentIdsToRemove: [String]!
+  ): RemoveDocumentsFromCorpus
+
+  """
+  Create a new CorpusAction that will be triggered when documents are added or edited in a corpus.
+  The action can run a fieldset extraction, an analyzer, or an agent - but exactly one must be specified.
+  Requires UPDATE permission on the corpus to create actions.
+
+  For thread/message-based triggers (new_thread, new_message), supports inline agent creation
+  via create_agent_inline=True with agent creation parameters. This creates a corpus-scoped
+  moderator agent and links it to the action in one transaction.
+  """
+  createCorpusAction(
+    """ID of the agent configuration to use"""
+    agentConfigId: ID
+
+    """Task instructions for the agent (required if agent_config_id is provided)"""
+    taskInstructions: String
+
+    """ID of the analyzer to run"""
+    analyzerId: ID
+
+    """ID of the corpus this action is for"""
+    corpusId: ID!
+
+    """Create a new agent inline instead of using existing agent_config_id"""
+    createAgentInline: Boolean
+
+    """Whether the action is disabled"""
+    disabled: Boolean
+
+    """ID of the fieldset to run"""
+    fieldsetId: ID
+
+    """Description for the new inline agent"""
+    inlineAgentDescription: String
+
+    """
+    System instructions for the new inline agent (required if create_agent_inline=True)
+    """
+    inlineAgentInstructions: String
+
+    """Name for the new inline agent (required if create_agent_inline=True)"""
+    inlineAgentName: String
+
+    """Tools available to the new inline agent"""
+    inlineAgentTools: [String]
+
+    """Name of the action"""
+    name: String
+
+    """Tools pre-authorized to run without approval"""
+    preAuthorizedTools: [String]
+
+    """Whether to run this action on all corpuses"""
+    runOnAllCorpuses: Boolean
+
+    """When to trigger the action (add_document or edit_document)"""
+    trigger: String!
+  ): CreateCorpusAction
+
+  """
+  Update an existing CorpusAction.
+  Allows updating name, trigger, action type (fieldset/analyzer/agent), disabled state,
+  and agent-specific settings.
+  Requires the user to be the creator of the action.
+  """
+  updateCorpusAction(
+    """ID of the agent configuration (clears other action types)"""
+    agentConfigId: ID
+
+    """Task instructions for the agent"""
+    taskInstructions: String
+
+    """ID of the analyzer to run (clears other action types)"""
+    analyzerId: ID
+
+    """Whether the action is disabled"""
+    disabled: Boolean
+
+    """ID of the fieldset to run (clears other action types)"""
+    fieldsetId: ID
+
+    """ID of the corpus action to update"""
+    id: ID!
+
+    """Updated name of the action"""
+    name: String
+
+    """Tools pre-authorized to run without approval"""
+    preAuthorizedTools: [String]
+
+    """Whether to run this action on all corpuses"""
+    runOnAllCorpuses: Boolean
+
+    """Updated trigger (add_document, edit_document, new_thread, new_message)"""
+    trigger: String
+  ): UpdateCorpusAction
+
+  """
+  Mutation to delete a CorpusAction.
+  Requires the user to be the creator of the action or have appropriate permissions.
+  """
+  deleteCorpusAction(
+    """ID of the corpus action to delete"""
+    id: String!
+  ): DeleteCorpusAction
+
+  """
+  Create a new folder in a corpus.
+
+  Delegates to FolderCRUDService.create_folder() for:
+  - Permission checking (corpus UPDATE permission)
+  - Validation (unique name, parent in same corpus)
+  - Folder creation
+  """
+  createCorpusFolder(
+    """Folder color (hex code)"""
+    color: String
+
+    """Corpus ID to create the folder in"""
+    corpusId: ID!
+
+    """Folder description"""
+    description: String
+
+    """Folder icon identifier"""
+    icon: String
+
+    """Folder name"""
+    name: String!
+
+    """Parent folder ID (omit for root-level folder)"""
+    parentId: ID
+
+    """List of tags"""
+    tags: [String]
+  ): CreateCorpusFolderMutation
+
+  """
+  Update folder properties (name, description, color, icon, tags).
+
+  Delegates to FolderCRUDService.update_folder() for:
+  - Permission checking (corpus UPDATE permission)
+  - Validation (unique name within parent)
+  - Folder update
+  """
+  updateCorpusFolder(
+    """New color (hex code)"""
+    color: String
+
+    """New description"""
+    description: String
+
+    """Folder ID to update"""
+    folderId: ID!
+
+    """New icon identifier"""
+    icon: String
+
+    """New folder name"""
+    name: String
+
+    """New list of tags"""
+    tags: [String]
+  ): UpdateCorpusFolderMutation
+
+  """
+  Move a folder to a different parent (or to root if parent_id is null).
+
+  Delegates to FolderCRUDService.move_folder() for:
+  - Permission checking (corpus UPDATE permission)
+  - Validation (no self-move, no move into descendants, same corpus)
+  - Folder move
+  """
+  moveCorpusFolder(
+    """Folder ID to move"""
+    folderId: ID!
+
+    """New parent folder ID (null to move to root)"""
+    newParentId: ID
+  ): MoveCorpusFolderMutation
+
+  """
+  Delete a folder and optionally its contents.
+
+  Delegates to FolderCRUDService.delete_folder() for:
+  - Permission checking (corpus DELETE permission)
+  - Child folder handling (reparent or cascade)
+  - Document folder assignment cleanup via DocumentPath
+  """
+  deleteCorpusFolder(
+    """If true, delete subfolders; if false, move to parent"""
+    deleteContents: Boolean = false
+
+    """Folder ID to delete"""
+    folderId: ID!
+  ): DeleteCorpusFolderMutation
+
+  """
+  Move a document to a specific folder (or to corpus root if folder_id is null).
+
+  Delegates to FolderDocumentService.move_document_to_folder() for:
+  - Permission checking (corpus UPDATE permission)
+  - Validation (document in corpus, folder in corpus)
+  - DocumentPath folder assignment update
+  """
+  moveDocumentToFolder(
+    """Corpus ID where the document is located"""
+    corpusId: ID!
+
+    """Document ID to move"""
+    documentId: ID!
+
+    """Folder ID to move to (null for corpus root)"""
+    folderId: ID
+  ): MoveDocumentToFolderMutation
+
+  """
+  Move multiple documents to a specific folder in bulk.
+
+  Delegates to FolderDocumentService.move_documents_to_folder() for:
+  - Permission checking (corpus UPDATE permission)
+  - Validation (all documents in corpus, folder in corpus)
+  - Bulk DocumentPath folder assignment update
+  """
+  moveDocumentsToFolder(
+    """Corpus ID where the documents are located"""
+    corpusId: ID!
+
+    """List of document IDs to move"""
+    documentIds: [ID]!
+
+    """Folder ID to move to (null for corpus root)"""
+    folderId: ID
+  ): MoveDocumentsToFolderMutation
+  importOpenContractsZip(
+    """Base-64 encoded string for zip of corpus file you want to import"""
+    base64FileString: String!
+  ): UploadCorpusImportZip
+  importAnnotatedDocToCorpus(documentImportData: String!, targetCorpusId: String!): UploadAnnotatedDocument
+
+  """
+  Mutation for importing a zip file to a corpus with folder structure preserved.
+
+  Unlike UploadDocumentsZip which discards folder structure, this mutation:
+  - Creates corpus folders matching the zip's directory structure
+  - Places documents in their corresponding folders
+  - Validates zip security (path traversal, zip bombs, etc.)
+  - Requires corpus EDIT permission
+
+  The import is processed asynchronously. Use the returned job_id to track progress.
+  """
+  importZipToCorpus(
+    """Base64-encoded zip file containing documents to import"""
+    base64FileString: String!
+
+    """ID of the corpus to import documents into"""
+    corpusId: ID!
+
+    """Optional metadata to apply to all documents"""
+    customMeta: GenericScalar
+
+    """Optional description to apply to all documents"""
+    description: String
+
+    """If True, documents are immediately public"""
+    makePublic: Boolean!
+
+    """
+    Optional folder ID within the corpus to place zip contents under. If not provided, zip contents are placed at corpus root.
+    """
+    targetFolderId: ID
+
+    """Optional prefix for document titles (combined with filename)"""
+    titlePrefix: String
+  ): ImportZipToCorpus
+
+  """
+  Mutation entrypoint for starting a corpus export.
+  Now refactored to optionally accept a list of Analysis IDs (analyses_ids)
+  that should be included in the export. If analyses_ids are provided, then
+  only annotations/labels from those analyses are included. Otherwise, all
+  annotations/labels for the corpus are included.
+  """
+  exportCorpus(
+    """
+    Optional list of Graphene IDs for analyses that should be included in the export
+    """
+    analysesIds: [String]
+
+    """
+    How to filter annotations - from corpus label set only, plus analyses, or analyses only
+    """
+    annotationFilterMode: AnnotationFilterMode = CORPUS_LABELSET_ONLY
+
+    """Graphene id of the corpus you want to package for export"""
+    corpusId: String!
+    exportFormat: ExportType
+
+    """Additional keyword arguments to pass to post-processors"""
+    inputKwargs: GenericScalar
+
+    """
+    List of fully qualified Python paths to post-processor functions to run
+    """
+    postProcessors: [String]
+  ): StartCorpusExport
+  deleteExport(id: String!): DeleteExport
+
+  """
+  Mutation to record when an authenticated user accepts cookie consent.
+  For anonymous users, this is handled via localStorage in the frontend.
+  """
+  acceptCookieConsent: AcceptCookieConsent
+
+  """
+  Mutation to record when a user dismisses the Getting Started guide.
+  This preference is stored on the user model and persists across sessions.
+  """
+  dismissGettingStarted: DismissGettingStarted
+  startAnalysisOnDoc(
+    """Optional arguments to be passed to the analyzer."""
+    analysisInputData: GenericScalar
+
+    """Id of the analyzer to use."""
+    analyzerId: ID!
+
+    """Optional Id of the corpus to associate with the analysis."""
+    corpusId: ID
+
+    """Id of the document to be analyzed."""
+    documentId: ID
+  ): StartDocumentAnalysisMutation
+  deleteAnalysis(id: String!): DeleteAnalysisMutation
+  makeAnalysisPublic(
+    """Analysis id to make public (superuser only)"""
+    analysisId: String!
+  ): MakeAnalysisPublic
+  createFieldset(description: String!, name: String!): CreateFieldset
+  createColumn(extractIsList: Boolean, fieldsetId: ID!, instructions: String, limitToLabel: String, matchText: String, mustContainText: String, name: String!, outputType: String!, query: String, taskName: String): CreateColumn
+  updateColumn(extractIsList: Boolean, fieldsetId: ID, id: ID!, instructions: String, limitToLabel: String, matchText: String, mustContainText: String, name: String, outputType: String, query: String, taskName: String): UpdateColumnMutation
+  deleteColumn(id: ID!): DeleteColumn
+
+  """
+  Create a new extract. If fieldset_id is provided, attach existing fieldset.
+  Otherwise, a new fieldset is created. If no name is provided, fieldset name has
+  form "[Extract name] Fieldset"
+  """
+  createExtract(corpusId: ID, fieldsetDescription: String, fieldsetId: ID, fieldsetName: String, name: String!): CreateExtract
+  startExtract(extractId: ID!): StartExtract
+  deleteExtract(id: String!): DeleteExtract
+
+  """
+  Mutation to update an existing Extract object.
+
+  Supports updating the name (title), corpus, fieldset, and error fields.
+  Ensures proper permission checks are applied.
+  """
+  updateExtract(
+    """ID of the Corpus to associate with the Extract."""
+    corpusId: ID
+
+    """Error message to update on the Extract."""
+    error: String
+
+    """ID of the Fieldset to associate with the Extract."""
+    fieldsetId: ID
+
+    """ID of the Extract to update."""
+    id: ID!
+
+    """New title for the Extract."""
+    title: String
+  ): UpdateExtractMutation
+  addDocsToExtract(
+    """List of ids of the documents to add to extract."""
+    documentIds: [ID]!
+
+    """Id of corpus to add docs to."""
+    extractId: ID!
+  ): AddDocumentsToExtract
+  removeDocsFromExtract(
+    """List of ids of the docs to remove from extract."""
+    documentIdsToRemove: [ID]!
+
+    """ID of extract to remove documents from."""
+    extractId: ID!
+  ): RemoveDocumentsFromExtract
+  approveDatacell(datacellId: String!): ApproveDatacell
+  rejectDatacell(datacellId: String!): RejectDatacell
+  editDatacell(datacellId: String!, editedData: GenericScalar!): EditDatacell
+  startExtractForDoc(corpusId: ID, documentId: ID!, fieldsetId: ID!): StartDocumentExtract
+
+  """
+  Mutation to update a note's content, creating a new version in the process.
+  Only the note creator can update their notes.
+  """
+  updateNote(
+    """New markdown content for the note"""
+    newContent: String!
+
+    """ID of the note to update"""
+    noteId: ID!
+
+    """Optional new title for the note"""
+    title: String
+  ): UpdateNote
+
+  """Mutation to delete a note. Only the creator can delete their notes."""
+  deleteNote(id: String!): DeleteNote
+
+  """Mutation to create a new note for a document."""
+  createNote(
+    """Markdown content of the note"""
+    content: String!
+
+    """Optional ID of the corpus this note is associated with"""
+    corpusId: ID
+
+    """ID of the document this note is for"""
+    documentId: ID!
+
+    """Optional ID of parent note for hierarchical notes"""
+    parentId: ID
+
+    """Title of the note"""
+    title: String!
+  ): CreateNote
+
+  """Create a metadata column for a corpus."""
+  createMetadataColumn(
+    """ID of the corpus"""
+    corpusId: ID!
+
+    """Data type of the field"""
+    dataType: String!
+
+    """Default value"""
+    defaultValue: GenericScalar
+
+    """Display order"""
+    displayOrder: Int
+
+    """Help text for the field"""
+    helpText: String
+
+    """Name of the metadata field"""
+    name: String!
+
+    """Validation configuration"""
+    validationConfig: GenericScalar
+  ): CreateMetadataColumn
+
+  """Update a metadata column."""
+  updateMetadataColumn(columnId: ID!, defaultValue: GenericScalar, displayOrder: Int, helpText: String, name: String, validationConfig: GenericScalar): UpdateMetadataColumn
+
+  """
+  Set a metadata value for a document.
+
+  Permission model:
+  - Requires Corpus UPDATE permission + Document READ permission
+  - Metadata is a corpus-level feature, so corpus permission controls editing
+  - Uses MetadataQueryOptimizer for consistent permission checking
+  """
+  setMetadataValue(columnId: ID!, corpusId: ID!, documentId: ID!, value: GenericScalar!): SetMetadataValue
+
+  """
+  Delete a metadata value for a document.
+
+  Permission model:
+  - Requires Corpus DELETE permission + Document READ permission
+  - Metadata is a corpus-level feature, so corpus permission controls deletion
+  - Uses MetadataQueryOptimizer for consistent permission checking
+  """
+  deleteMetadataValue(columnId: ID!, corpusId: ID!, documentId: ID!): DeleteMetadataValue
+
+  """Create a new badge (admin/corpus owner only)."""
+  createBadge(
+    """Badge type: GLOBAL or CORPUS"""
+    badgeType: String!
+
+    """Hex color code"""
+    color: String
+
+    """Corpus ID for corpus-specific badges"""
+    corpusId: ID
+
+    """JSON configuration for auto-award criteria"""
+    criteriaConfig: JSONString
+
+    """Badge description"""
+    description: String!
+
+    """Icon identifier from lucide-react (e.g., 'Trophy')"""
+    icon: String!
+
+    """Whether badge is automatically awarded"""
+    isAutoAwarded: Boolean = false
+
+    """Unique badge name"""
+    name: String!
+  ): CreateBadgeMutation
+
+  """Update an existing badge."""
+  updateBadge(
+    """Badge ID to update"""
+    badgeId: ID!
+    color: String
+    criteriaConfig: JSONString
+    description: String
+    icon: String
+    isAutoAwarded: Boolean
+    name: String
+  ): UpdateBadgeMutation
+
+  """Delete a badge."""
+  deleteBadge(
+    """Badge ID to delete"""
+    badgeId: ID!
+  ): DeleteBadgeMutation
+
+  """Manually award a badge to a user."""
+  awardBadge(
+    """Badge ID to award"""
+    badgeId: ID!
+
+    """Corpus context for corpus-specific badges"""
+    corpusId: ID
+
+    """User ID to award badge to"""
+    userId: ID!
+  ): AwardBadgeMutation
+
+  """Revoke a badge from a user."""
+  revokeBadge(
+    """UserBadge ID to revoke"""
+    userBadgeId: ID!
+  ): RevokeBadgeMutation
+
+  """
+  Create a new discussion thread linked to a corpus and/or document.
+
+  Supports three modes:
+  - corpus_id only: Thread is linked to corpus (corpus-level discussion)
+  - document_id only: Thread is linked to document (standalone document discussion)
+  - both corpus_id AND document_id: Thread is linked to both (doc-in-corpus discussion)
+
+  Security Note: Message content is stored as Markdown from TipTap editor.
+  Markdown is safer than HTML (no script injection), and mention links use
+  standard Markdown syntax [text](url) which is parsed to create database relationships.
+  Part of Issue #623 - @ Mentions Feature (Extended)
+  Part of Issue #677 - Document Discussions UI Enhancement
+  """
+  createThread(
+    """ID of the corpus for this thread (optional if document_id provided)"""
+    corpusId: String
+
+    """Optional description"""
+    description: String
+
+    """ID of the document for this thread (for doc-specific discussions)"""
+    documentId: String
+
+    """Initial message content"""
+    initialMessage: String!
+
+    """Title of the thread"""
+    title: String!
+  ): CreateThreadMutation
+
+  """Post a new message to an existing thread."""
+  createThreadMessage(
+    """Message content"""
+    content: String!
+
+    """ID of the conversation/thread"""
+    conversationId: String!
+  ): CreateThreadMessageMutation
+
+  """Create a nested reply to an existing message."""
+  replyToMessage(
+    """Reply content"""
+    content: String!
+
+    """ID of the parent message"""
+    parentMessageId: String!
+  ): ReplyToMessageMutation
+
+  """
+  Update the content of an existing message.
+
+  Security Note: Only the message creator or a moderator can edit messages.
+  Mention links are re-parsed when content is updated.
+
+  XSS Prevention Note: The content field contains user-generated markdown text
+  that must be properly escaped when rendered in the frontend to prevent XSS
+  attacks. GraphQL's GenericScalar handles JSON serialization safely, but the
+  frontend must use a markdown renderer that sanitizes HTML output.
+
+  Part of Issue #686 - Mobile UI for Edit Message Modal
+  """
+  updateMessage(
+    """New content for the message"""
+    content: String!
+
+    """ID of the message to update"""
+    messageId: ID!
+  ): UpdateMessageMutation
+
+  """Soft delete a conversation/thread."""
+  deleteConversation(
+    """ID of the conversation to delete"""
+    conversationId: String!
+  ): DeleteConversationMutation
+
+  """Soft delete a message."""
+  deleteMessage(
+    """ID of the message to delete"""
+    messageId: ID!
+  ): DeleteMessageMutation
+
+  """
+  Lock a conversation/thread to prevent new messages.
+  Only corpus owners or moderators with lock_threads permission can lock threads.
+  """
+  lockThread(
+    """ID of the conversation to lock"""
+    conversationId: String!
+
+    """Optional reason for locking"""
+    reason: String
+  ): LockThreadMutation
+
+  """
+  Unlock a conversation/thread to allow new messages.
+  Only corpus owners or moderators with lock_threads permission can unlock threads.
+  """
+  unlockThread(
+    """ID of the conversation to unlock"""
+    conversationId: String!
+
+    """Optional reason for unlocking"""
+    reason: String
+  ): UnlockThreadMutation
+
+  """
+  Pin a conversation/thread to the top of the list.
+  Only corpus owners or moderators with pin_threads permission can pin threads.
+  """
+  pinThread(
+    """ID of the conversation to pin"""
+    conversationId: String!
+
+    """Optional reason for pinning"""
+    reason: String
+  ): PinThreadMutation
+
+  """
+  Unpin a conversation/thread from the top of the list.
+  Only corpus owners or moderators with pin_threads permission can unpin threads.
+  """
+  unpinThread(
+    """ID of the conversation to unpin"""
+    conversationId: String!
+
+    """Optional reason for unpinning"""
+    reason: String
+  ): UnpinThreadMutation
+
+  """
+  Soft delete a thread (conversation).
+  Only moderators or thread creators can delete threads.
+  """
+  deleteThread(
+    """ID of thread to delete"""
+    conversationId: ID!
+
+    """Reason for deletion"""
+    reason: String
+  ): DeleteThreadMutation
+
+  """
+  Restore a soft-deleted thread.
+  Only moderators or thread creators can restore threads.
+  """
+  restoreThread(
+    """ID of thread to restore"""
+    conversationId: ID!
+
+    """Reason for restoration"""
+    reason: String
+  ): RestoreThreadMutation
+
+  """
+  Add a moderator to a corpus with specific permissions.
+  Only corpus owners can add moderators.
+  """
+  addModerator(
+    """ID of the corpus"""
+    corpusId: String!
+
+    """
+    List of permissions: lock_threads, pin_threads, delete_messages, delete_threads
+    """
+    permissions: [String]!
+
+    """ID of the user to add as moderator"""
+    userId: String!
+  ): AddModeratorMutation
+
+  """
+  Remove a moderator from a corpus.
+  Only corpus owners can remove moderators.
+  """
+  removeModerator(
+    """ID of the corpus"""
+    corpusId: String!
+
+    """ID of the user to remove as moderator"""
+    userId: String!
+  ): RemoveModeratorMutation
+
+  """
+  Update a moderator's permissions for a corpus.
+  Only corpus owners can update moderator permissions.
+  """
+  updateModeratorPermissions(
+    """ID of the corpus"""
+    corpusId: String!
+
+    """
+    List of permissions: lock_threads, pin_threads, delete_messages, delete_threads
+    """
+    permissions: [String]!
+
+    """ID of the moderator user"""
+    userId: String!
+  ): UpdateModeratorPermissionsMutation
+
+  """
+  Rollback a moderation action by executing its inverse.
+  - delete_message -> restore_message
+  - delete_thread -> restore_thread
+  - lock_thread -> unlock_thread
+  - pin_thread -> unpin_thread
+
+  Only moderators with appropriate permissions can rollback.
+  Creates a new ModerationAction record for the rollback.
+  """
+  rollbackModerationAction(
+    """ID of action to rollback"""
+    actionId: ID!
+
+    """Reason for rollback"""
+    reason: String
+  ): RollbackModerationActionMutation
+
+  """
+  Create or update a vote on a message.
+  Users can upvote or downvote messages. Changing vote type updates the existing vote.
+  Users cannot vote on their own messages.
+  """
+  voteMessage(
+    """ID of the message to vote on"""
+    messageId: String!
+
+    """Vote type: 'upvote' or 'downvote'"""
+    voteType: String!
+  ): VoteMessageMutation
+
+  """Remove user's vote from a message."""
+  removeVote(
+    """ID of the message to remove vote from"""
+    messageId: String!
+  ): RemoveVoteMutation
+
+  """
+  Create or update a vote on a conversation/thread.
+  Users can upvote or downvote threads. Changing vote type updates the existing vote.
+  Users cannot vote on their own threads.
+
+  Permission: Users can vote on any conversation/thread they can see (visibility-based).
+  """
+  voteConversation(
+    """ID of the conversation/thread to vote on"""
+    conversationId: String!
+
+    """Vote type: 'upvote' or 'downvote'"""
+    voteType: String!
+  ): VoteConversationMutation
+
+  """
+  Remove user's vote from a conversation/thread.
+
+  Permission: Users can remove their vote from any conversation they can see.
+  """
+  removeConversationVote(
+    """ID of the conversation/thread to remove vote from"""
+    conversationId: String!
+  ): RemoveConversationVoteMutation
+
+  """Mark a single notification as read."""
+  markNotificationRead(
+    """Notification ID to mark as read"""
+    notificationId: ID!
+  ): MarkNotificationReadMutation
+
+  """Mark a single notification as unread."""
+  markNotificationUnread(
+    """Notification ID to mark as unread"""
+    notificationId: ID!
+  ): MarkNotificationUnreadMutation
+
+  """Mark all of the current user's notifications as read."""
+  markAllNotificationsRead: MarkAllNotificationsReadMutation
+
+  """Delete a notification."""
+  deleteNotification(
+    """Notification ID to delete"""
+    notificationId: ID!
+  ): DeleteNotificationMutation
+
+  """Create a new agent configuration (admin/corpus owner only)."""
+  createAgentConfiguration(
+    """List of tools available to the agent"""
+    availableTools: [String]
+
+    """Avatar URL"""
+    avatarUrl: String
+
+    """Badge display configuration"""
+    badgeConfig: GenericScalar
+
+    """Corpus ID for corpus-specific agents"""
+    corpusId: ID
+
+    """Agent description"""
+    description: String!
+
+    """Whether agent is publicly visible"""
+    isPublic: Boolean = true
+
+    """Agent name"""
+    name: String!
+
+    """List of tools requiring explicit permission"""
+    permissionRequiredTools: [String]
+
+    """Scope: GLOBAL or CORPUS"""
+    scope: String!
+
+    """
+    URL-friendly slug for @mentions (auto-generated from name if not provided)
+    """
+    slug: String
+
+    """System instructions for the agent"""
+    systemInstructions: String!
+  ): CreateAgentConfigurationMutation
+
+  """Update an existing agent configuration."""
+  updateAgentConfiguration(
+    """Agent ID to update"""
+    agentId: ID!
+    availableTools: [String]
+    avatarUrl: String
+    badgeConfig: GenericScalar
+    description: String
+    isActive: Boolean
+    isPublic: Boolean
+    name: String
+    permissionRequiredTools: [String]
+
+    """URL-friendly slug for @mentions"""
+    slug: String
+    systemInstructions: String
+  ): UpdateAgentConfigurationMutation
+
+  """Delete an agent configuration."""
+  deleteAgentConfiguration(
+    """Agent ID to delete"""
+    agentId: ID!
+  ): DeleteAgentConfigurationMutation
+}
+
+"""Obtain JSON Web Token mutation"""
+type ObtainJSONWebToken {
+  payload: GenericScalar!
+  refreshExpiresIn: Int!
+  token: String!
+  refreshToken: String!
+}
+
+type Verify {
+  payload: GenericScalar!
+}
+
+type Refresh {
+  payload: GenericScalar!
+  refreshExpiresIn: Int!
+  token: String!
+  refreshToken: String!
+}
+
+type AddAnnotation {
+  ok: Boolean
+  annotation: AnnotationType
+}
+
+type RemoveAnnotation {
+  ok: Boolean
+  message: String
+}
+
+type UpdateAnnotation {
+  ok: Boolean
+  message: String
+  objId: ID
+}
+
+type AddDocTypeAnnotation {
+  ok: Boolean
+  annotation: AnnotationType
+}
+
+type ApproveAnnotation {
+  ok: Boolean
+  userFeedback: UserFeedbackType
+  message: String
+}
+
+type RejectAnnotation {
+  ok: Boolean
+  userFeedback: UserFeedbackType
+  message: String
+}
+
+type AddRelationship {
+  ok: Boolean
+  relationship: RelationshipType
+  message: String
+}
+
+type RemoveRelationship {
+  ok: Boolean
+  message: String
+}
+
+type RemoveRelationships {
+  ok: Boolean
+  message: String
+}
+
+"""
+Update an existing relationship by adding or removing annotations
+from source or target sets.
+"""
+type UpdateRelationship {
+  ok: Boolean
+  relationship: RelationshipType
+  message: String
+}
+
+type UpdateRelations {
+  ok: Boolean
+  message: String
+}
+
+input RelationInputType {
+  myPermissions: GenericScalar
+  isPublished: Boolean
+  objectSharedWith: GenericScalar
+  id: String
+  sourceIds: [String]
+  targetIds: [String]
+  relationshipLabelId: String
+  corpusId: String
+  documentId: String
+}
+
+"""
+Create a new relationship between two documents in the same corpus.
+
+Permission requirements:
+- User must have CREATE permission on BOTH source and target documents
+- User must have CREATE permission on the corpus
+
+Validation:
+- Both documents must be in the specified corpus
+- For RELATIONSHIP type: annotation_label_id is required
+- For NOTES type: annotation_label_id is optional
+"""
+type CreateDocumentRelationship {
+  ok: Boolean
+  documentRelationship: DocumentRelationshipType
+  message: String
+}
+
+"""
+Update an existing document relationship.
+
+Permission requirements:
+- User must have UPDATE permission on the document relationship
+- OR UPDATE permission on BOTH source and target documents
+
+Updatable fields:
+- relationship_type (with validation for annotation_label requirement)
+- annotation_label_id
+- data (JSON payload)
+- corpus_id
+"""
+type UpdateDocumentRelationship {
+  ok: Boolean
+  documentRelationship: DocumentRelationshipType
+  message: String
+}
+
+"""
+Delete a document relationship.
+
+Permission requirements:
+- User must have DELETE permission on the document relationship
+- OR DELETE permission on BOTH source and target documents
+"""
+type DeleteDocumentRelationship {
+  ok: Boolean
+  message: String
+}
+
+"""
+Delete multiple document relationships at once.
+
+Permission requirements:
+- User must have DELETE permission on each document relationship
+"""
+type DeleteDocumentRelationships {
+  ok: Boolean
+  message: String
+  deletedCount: Int
+}
+
+type CreateLabelset {
+  ok: Boolean
+  message: String
+  obj: LabelSetType
+}
+
+type UpdateLabelset {
+  ok: Boolean
+  message: String
+  objId: ID
+}
+
+type DeleteLabelset {
+  ok: Boolean
+  message: String
+}
+
+type CreateLabelMutation {
+  ok: Boolean
+  message: String
+  objId: ID
+}
+
+type UpdateLabelMutation {
+  ok: Boolean
+  message: String
+  objId: ID
+}
+
+type DeleteLabelMutation {
+  ok: Boolean
+  message: String
+}
+
+type DeleteMultipleLabelMutation {
+  ok: Boolean
+  message: String
+}
+
+type CreateLabelForLabelsetMutation {
+  ok: Boolean
+  message: String
+  obj: AnnotationLabelType
+  objId: ID
+}
+
+type RemoveLabelsFromLabelsetMutation {
+  ok: Boolean
+  message: String
+}
+
+"""
+Smart mutation that handles label search and creation with automatic labelset management.
+
+This mutation encapsulates the following logic:
+1. If no labelset exists for the corpus and createIfNotFound is true:
+   - Creates a new labelset
+   - Assigns it to the corpus
+   - Creates the label in the new labelset
+
+2. If labelset exists:
+   - Searches for existing labels matching the search term
+   - If matches found: returns the matching labels
+   - If no matches and createIfNotFound is true: creates the label
+   - If no matches and createIfNotFound is false: returns empty list
+"""
+type SmartLabelSearchOrCreateMutation {
+  ok: Boolean
+  message: String
+
+  """List of matching or created labels"""
+  labels: [AnnotationLabelType]
+
+  """The labelset (existing or newly created)"""
+  labelset: LabelSetType
+
+  """Whether a new labelset was created"""
+  labelsetCreated: Boolean
+
+  """Whether a new label was created"""
+  labelCreated: Boolean
+}
+
+"""
+Simplified mutation to get all available labels for a corpus with helpful status info.
+"""
+type SmartLabelListMutation {
+  ok: Boolean
+  message: String
+  labels: [AnnotationLabelType]
+  hasLabelset: Boolean
+  canCreateLabels: Boolean
+}
+
+type UploadDocument {
+  ok: Boolean
+  message: String
+  document: DocumentType
+}
+
+type UpdateDocument {
+  ok: Boolean
+  message: String
+  objId: ID
+}
+
+"""
+Mutation to update a document's markdown summary for a specific corpus, creating a new version in the process.
+Users can create/update summaries if:
+- No summary exists yet and they have permission on the corpus (public or their corpus)
+- A summary exists and they are the original author
+"""
+type UpdateDocumentSummary {
+  ok: Boolean
+  message: String
+  obj: DocumentType
+
+  """The new version number after update"""
+  version: Int
+}
+
+type DeleteDocument {
+  ok: Boolean
+  message: String
+}
+
+type DeleteMultipleDocuments {
+  ok: Boolean
+  message: String
+}
+
+"""
+Mutation for uploading multiple documents via a zip file.
+The zip is stored as a temporary file and processed asynchronously.
+Only files with allowed MIME types will be created as documents.
+"""
+type UploadDocumentsZip {
+  ok: Boolean
+  message: String
+
+  """ID to track the processing job"""
+  jobId: String
+}
+
+"""
+Restore a soft-deleted document path within a corpus.
+
+Delegates to DocumentLifecycleService.restore_document() for:
+- Permission checking (corpus UPDATE permission)
+- Creating new DocumentPath with is_deleted=False
+"""
+type RestoreDeletedDocument {
+  ok: Boolean
+  message: String
+  document: DocumentType
+}
+
+"""
+Restore a document to a previous content version.
+Creates a new version that is a copy of the specified version.
+"""
+type RestoreDocumentToVersion {
+  ok: Boolean
+  message: String
+  document: DocumentType
+  newVersionNumber: Int
+}
+
+"""
+Permanently delete a soft-deleted document from a corpus.
+
+This is IRREVERSIBLE and removes:
+- All DocumentPath history for the document in this corpus
+- User annotations (non-structural) on the document
+- Relationships involving those annotations
+- DocumentSummaryRevision records
+- The Document itself if no other corpus references it
+
+Requires DELETE permission on the corpus.
+"""
+type PermanentlyDeleteDocument {
+  ok: Boolean
+  message: String
+}
+
+"""
+Permanently delete ALL soft-deleted documents in a corpus (empty trash).
+
+This is IRREVERSIBLE and removes all documents currently in the corpus trash.
+
+Requires DELETE permission on the corpus.
+"""
+type EmptyTrash {
+  ok: Boolean
+  message: String
+  deletedCount: Int
+}
+
+type StartCorpusFork {
+  ok: Boolean
+  message: String
+  newCorpus: CorpusType
+}
+
+"""
+Set corpus visibility (public/private).
+
+Requires one of:
+- User is the corpus creator (owner), OR
+- User has PERMISSION permission on the corpus, OR
+- User is superuser
+
+Security notes:
+- Permission check prevents users from escalating access
+- Uses existing make_corpus_public_task for cascading public visibility
+- Making private only affects the corpus flag (child objects remain public)
+"""
+type SetCorpusVisibility {
+  ok: Boolean
+  message: String
+}
+
+type CreateCorpusMutation {
+  ok: Boolean
+  message: String
+  objId: ID
+}
+
+type UpdateCorpusMutation {
+  ok: Boolean
+  message: String
+  objId: ID
+}
+
+"""Update basic profile fields for the current user, including slug."""
+type UpdateMe {
+  ok: Boolean
+  message: String
+  user: UserType
+}
+
+"""
+Mutation to update a corpus's markdown description, creating a new version in the process.
+Only the corpus creator can update the description.
+"""
+type UpdateCorpusDescription {
+  ok: Boolean
+  message: String
+  obj: CorpusType
+
+  """The new version number after update"""
+  version: Int
+}
+
+type DeleteCorpusMutation {
+  ok: Boolean
+  message: String
+}
+
+"""
+Add existing documents to a corpus.
+
+Delegates to CorpusDocumentService.add_documents_to_corpus() for:
+- Permission checking (corpus UPDATE permission)
+- Document validation (user owns or public)
+- Dual-system update (DocumentPath + corpus.add_document)
+"""
+type AddDocumentsToCorpus {
+  ok: Boolean
+  message: String
+}
+
+"""
+Remove documents from a corpus (soft-delete).
+
+Delegates to CorpusDocumentService.remove_documents_from_corpus() for:
+- Permission checking (corpus UPDATE permission)
+- Soft-delete via DocumentPath (creates is_deleted=True record)
+- Audit trail
+"""
+type RemoveDocumentsFromCorpus {
+  ok: Boolean
+  message: String
+}
+
+"""
+Create a new CorpusAction that will be triggered when documents are added or edited in a corpus.
+The action can run a fieldset extraction, an analyzer, or an agent - but exactly one must be specified.
+Requires UPDATE permission on the corpus to create actions.
+
+For thread/message-based triggers (new_thread, new_message), supports inline agent creation
+via create_agent_inline=True with agent creation parameters. This creates a corpus-scoped
+moderator agent and links it to the action in one transaction.
+"""
+type CreateCorpusAction {
+  ok: Boolean
+  message: String
+  obj: CorpusActionType
+}
+
+"""
+Update an existing CorpusAction.
+Allows updating name, trigger, action type (fieldset/analyzer/agent), disabled state,
+and agent-specific settings.
+Requires the user to be the creator of the action.
+"""
+type UpdateCorpusAction {
+  ok: Boolean
+  message: String
+  obj: CorpusActionType
+}
+
+"""
+Mutation to delete a CorpusAction.
+Requires the user to be the creator of the action or have appropriate permissions.
+"""
+type DeleteCorpusAction {
+  ok: Boolean
+  message: String
+}
+
+"""
+Create a new folder in a corpus.
+
+Delegates to FolderCRUDService.create_folder() for:
+- Permission checking (corpus UPDATE permission)
+- Validation (unique name, parent in same corpus)
+- Folder creation
+"""
+type CreateCorpusFolderMutation {
+  ok: Boolean
+  message: String
+  folder: CorpusFolderType
+}
+
+"""
+Update folder properties (name, description, color, icon, tags).
+
+Delegates to FolderCRUDService.update_folder() for:
+- Permission checking (corpus UPDATE permission)
+- Validation (unique name within parent)
+- Folder update
+"""
+type UpdateCorpusFolderMutation {
+  ok: Boolean
+  message: String
+  folder: CorpusFolderType
+}
+
+"""
+Move a folder to a different parent (or to root if parent_id is null).
+
+Delegates to FolderCRUDService.move_folder() for:
+- Permission checking (corpus UPDATE permission)
+- Validation (no self-move, no move into descendants, same corpus)
+- Folder move
+"""
+type MoveCorpusFolderMutation {
+  ok: Boolean
+  message: String
+  folder: CorpusFolderType
+}
+
+"""
+Delete a folder and optionally its contents.
+
+Delegates to FolderCRUDService.delete_folder() for:
+- Permission checking (corpus DELETE permission)
+- Child folder handling (reparent or cascade)
+- Document folder assignment cleanup via DocumentPath
+"""
+type DeleteCorpusFolderMutation {
+  ok: Boolean
+  message: String
+}
+
+"""
+Move a document to a specific folder (or to corpus root if folder_id is null).
+
+Delegates to FolderDocumentService.move_document_to_folder() for:
+- Permission checking (corpus UPDATE permission)
+- Validation (document in corpus, folder in corpus)
+- DocumentPath folder assignment update
+"""
+type MoveDocumentToFolderMutation {
+  ok: Boolean
+  message: String
+  document: DocumentType
+}
+
+"""
+Move multiple documents to a specific folder in bulk.
+
+Delegates to FolderDocumentService.move_documents_to_folder() for:
+- Permission checking (corpus UPDATE permission)
+- Validation (all documents in corpus, folder in corpus)
+- Bulk DocumentPath folder assignment update
+"""
+type MoveDocumentsToFolderMutation {
+  ok: Boolean
+  message: String
+
+  """Number of documents successfully moved"""
+  movedCount: Int
+}
+
+type UploadCorpusImportZip {
+  ok: Boolean
+  message: String
+  corpus: CorpusType
+}
+
+type UploadAnnotatedDocument {
+  ok: Boolean
+  message: String
+}
+
+"""
+Mutation for importing a zip file to a corpus with folder structure preserved.
+
+Unlike UploadDocumentsZip which discards folder structure, this mutation:
+- Creates corpus folders matching the zip's directory structure
+- Places documents in their corresponding folders
+- Validates zip security (path traversal, zip bombs, etc.)
+- Requires corpus EDIT permission
+
+The import is processed asynchronously. Use the returned job_id to track progress.
+"""
+type ImportZipToCorpus {
+  ok: Boolean
+  message: String
+
+  """ID to track the import job"""
+  jobId: String
+}
+
+"""
+Mutation entrypoint for starting a corpus export.
+Now refactored to optionally accept a list of Analysis IDs (analyses_ids)
+that should be included in the export. If analyses_ids are provided, then
+only annotations/labels from those analyses are included. Otherwise, all
+annotations/labels for the corpus are included.
+"""
+type StartCorpusExport {
+  ok: Boolean
+  message: String
+  export: UserExportType
+}
+
+"""An enumeration."""
+enum AnnotationFilterMode {
+  CORPUS_LABELSET_ONLY
+  CORPUS_LABELSET_PLUS_ANALYSES
+  ANALYSES_ONLY
+}
+
+"""An enumeration."""
+enum ExportType {
+  LANGCHAIN
+  OPEN_CONTRACTS
+  FUNSD
+}
+
+type DeleteExport {
+  ok: Boolean
+  message: String
+}
+
+"""
+Mutation to record when an authenticated user accepts cookie consent.
+For anonymous users, this is handled via localStorage in the frontend.
+"""
+type AcceptCookieConsent {
+  ok: Boolean
+  message: String
+}
+
+"""
+Mutation to record when a user dismisses the Getting Started guide.
+This preference is stored on the user model and persists across sessions.
+"""
+type DismissGettingStarted {
+  ok: Boolean
+  message: String
+}
+
+type StartDocumentAnalysisMutation {
+  ok: Boolean
+  message: String
+  obj: AnalysisType
+}
+
+type DeleteAnalysisMutation {
+  ok: Boolean
+  message: String
+}
+
+type MakeAnalysisPublic {
+  ok: Boolean
+  message: String
+  obj: AnalysisType
+}
+
+type CreateFieldset {
+  ok: Boolean
+  message: String
+  obj: FieldsetType
+}
+
+type CreateColumn {
+  ok: Boolean
+  message: String
+  obj: ColumnType
+}
+
+type UpdateColumnMutation {
+  ok: Boolean
+  message: String
+  objId: ID
+  obj: ColumnType
+}
+
+type DeleteColumn {
+  ok: Boolean
+  message: String
+  deletedId: String
+}
+
+"""
+Create a new extract. If fieldset_id is provided, attach existing fieldset.
+Otherwise, a new fieldset is created. If no name is provided, fieldset name has
+form "[Extract name] Fieldset"
+"""
+type CreateExtract {
+  ok: Boolean
+  msg: String
+  obj: ExtractType
+}
+
+type StartExtract {
+  ok: Boolean
+  message: String
+  obj: ExtractType
+}
+
+type DeleteExtract {
+  ok: Boolean
+  message: String
+}
+
+"""
+Mutation to update an existing Extract object.
+
+Supports updating the name (title), corpus, fieldset, and error fields.
+Ensures proper permission checks are applied.
+"""
+type UpdateExtractMutation {
+  ok: Boolean
+  message: String
+  obj: ExtractType
+}
+
+type AddDocumentsToExtract {
+  ok: Boolean
+  message: String
+  objId: ID
+  objs: [DocumentType]
+}
+
+type RemoveDocumentsFromExtract {
+  ok: Boolean
+  message: String
+  idsRemoved: [String]
+}
+
+type ApproveDatacell {
+  ok: Boolean
+  message: String
+  obj: DatacellType
+}
+
+type RejectDatacell {
+  ok: Boolean
+  message: String
+  obj: DatacellType
+}
+
+type EditDatacell {
+  ok: Boolean
+  message: String
+  obj: DatacellType
+}
+
+type StartDocumentExtract {
+  ok: Boolean
+  message: String
+  obj: ExtractType
+}
+
+"""
+Mutation to update a note's content, creating a new version in the process.
+Only the note creator can update their notes.
+"""
+type UpdateNote {
+  ok: Boolean
+  message: String
+  obj: NoteType
+
+  """The new version number after update"""
+  version: Int
+}
+
+"""Mutation to delete a note. Only the creator can delete their notes."""
+type DeleteNote {
+  ok: Boolean
+  message: String
+}
+
+"""Mutation to create a new note for a document."""
+type CreateNote {
+  ok: Boolean
+  message: String
+  obj: NoteType
+}
+
+"""Create a metadata column for a corpus."""
+type CreateMetadataColumn {
+  ok: Boolean
+  message: String
+  obj: ColumnType
+}
+
+"""Update a metadata column."""
+type UpdateMetadataColumn {
+  ok: Boolean
+  message: String
+  obj: ColumnType
+}
+
+"""
+Set a metadata value for a document.
+
+Permission model:
+- Requires Corpus UPDATE permission + Document READ permission
+- Metadata is a corpus-level feature, so corpus permission controls editing
+- Uses MetadataQueryOptimizer for consistent permission checking
+"""
+type SetMetadataValue {
+  ok: Boolean
+  message: String
+  obj: DatacellType
+}
+
+"""
+Delete a metadata value for a document.
+
+Permission model:
+- Requires Corpus DELETE permission + Document READ permission
+- Metadata is a corpus-level feature, so corpus permission controls deletion
+- Uses MetadataQueryOptimizer for consistent permission checking
+"""
+type DeleteMetadataValue {
+  ok: Boolean
+  message: String
+}
+
+"""Create a new badge (admin/corpus owner only)."""
+type CreateBadgeMutation {
+  ok: Boolean
+  message: String
+  badge: BadgeType
+}
+
+"""Update an existing badge."""
+type UpdateBadgeMutation {
+  ok: Boolean
+  message: String
+  badge: BadgeType
+}
+
+"""Delete a badge."""
+type DeleteBadgeMutation {
+  ok: Boolean
+  message: String
+}
+
+"""Manually award a badge to a user."""
+type AwardBadgeMutation {
+  ok: Boolean
+  message: String
+  userBadge: UserBadgeType
+}
+
+"""Revoke a badge from a user."""
+type RevokeBadgeMutation {
+  ok: Boolean
+  message: String
+}
+
+"""
+Create a new discussion thread linked to a corpus and/or document.
+
+Supports three modes:
+- corpus_id only: Thread is linked to corpus (corpus-level discussion)
+- document_id only: Thread is linked to document (standalone document discussion)
+- both corpus_id AND document_id: Thread is linked to both (doc-in-corpus discussion)
+
+Security Note: Message content is stored as Markdown from TipTap editor.
+Markdown is safer than HTML (no script injection), and mention links use
+standard Markdown syntax [text](url) which is parsed to create database relationships.
+Part of Issue #623 - @ Mentions Feature (Extended)
+Part of Issue #677 - Document Discussions UI Enhancement
+"""
+type CreateThreadMutation {
+  ok: Boolean
+  message: String
+  obj: ConversationType
+}
+
+"""Post a new message to an existing thread."""
+type CreateThreadMessageMutation {
+  ok: Boolean
+  message: String
+  obj: MessageType
+}
+
+"""Create a nested reply to an existing message."""
+type ReplyToMessageMutation {
+  ok: Boolean
+  message: String
+  obj: MessageType
+}
+
+"""
+Update the content of an existing message.
+
+Security Note: Only the message creator or a moderator can edit messages.
+Mention links are re-parsed when content is updated.
+
+XSS Prevention Note: The content field contains user-generated markdown text
+that must be properly escaped when rendered in the frontend to prevent XSS
+attacks. GraphQL's GenericScalar handles JSON serialization safely, but the
+frontend must use a markdown renderer that sanitizes HTML output.
+
+Part of Issue #686 - Mobile UI for Edit Message Modal
+"""
+type UpdateMessageMutation {
+  ok: Boolean
+  message: String
+  obj: MessageType
+}
+
+"""Soft delete a conversation/thread."""
+type DeleteConversationMutation {
+  ok: Boolean
+  message: String
+}
+
+"""Soft delete a message."""
+type DeleteMessageMutation {
+  ok: Boolean
+  message: String
+}
+
+"""
+Lock a conversation/thread to prevent new messages.
+Only corpus owners or moderators with lock_threads permission can lock threads.
+"""
+type LockThreadMutation {
+  ok: Boolean
+  message: String
+  obj: ConversationType
+}
+
+"""
+Unlock a conversation/thread to allow new messages.
+Only corpus owners or moderators with lock_threads permission can unlock threads.
+"""
+type UnlockThreadMutation {
+  ok: Boolean
+  message: String
+  obj: ConversationType
+}
+
+"""
+Pin a conversation/thread to the top of the list.
+Only corpus owners or moderators with pin_threads permission can pin threads.
+"""
+type PinThreadMutation {
+  ok: Boolean
+  message: String
+  obj: ConversationType
+}
+
+"""
+Unpin a conversation/thread from the top of the list.
+Only corpus owners or moderators with pin_threads permission can unpin threads.
+"""
+type UnpinThreadMutation {
+  ok: Boolean
+  message: String
+  obj: ConversationType
+}
+
+"""
+Soft delete a thread (conversation).
+Only moderators or thread creators can delete threads.
+"""
+type DeleteThreadMutation {
+  ok: Boolean
+  message: String
+  conversation: ConversationType
+}
+
+"""
+Restore a soft-deleted thread.
+Only moderators or thread creators can restore threads.
+"""
+type RestoreThreadMutation {
+  ok: Boolean
+  message: String
+  conversation: ConversationType
+}
+
+"""
+Add a moderator to a corpus with specific permissions.
+Only corpus owners can add moderators.
+"""
+type AddModeratorMutation {
+  ok: Boolean
+  message: String
+}
+
+"""
+Remove a moderator from a corpus.
+Only corpus owners can remove moderators.
+"""
+type RemoveModeratorMutation {
+  ok: Boolean
+  message: String
+}
+
+"""
+Update a moderator's permissions for a corpus.
+Only corpus owners can update moderator permissions.
+"""
+type UpdateModeratorPermissionsMutation {
+  ok: Boolean
+  message: String
+}
+
+"""
+Rollback a moderation action by executing its inverse.
+- delete_message -> restore_message
+- delete_thread -> restore_thread
+- lock_thread -> unlock_thread
+- pin_thread -> unpin_thread
+
+Only moderators with appropriate permissions can rollback.
+Creates a new ModerationAction record for the rollback.
+"""
+type RollbackModerationActionMutation {
+  ok: Boolean
+  message: String
+  rollbackAction: ModerationActionType
+}
+
+"""
+Create or update a vote on a message.
+Users can upvote or downvote messages. Changing vote type updates the existing vote.
+Users cannot vote on their own messages.
+"""
+type VoteMessageMutation {
+  ok: Boolean
+  message: String
+  obj: MessageType
+}
+
+"""Remove user's vote from a message."""
+type RemoveVoteMutation {
+  ok: Boolean
+  message: String
+  obj: MessageType
+}
+
+"""
+Create or update a vote on a conversation/thread.
+Users can upvote or downvote threads. Changing vote type updates the existing vote.
+Users cannot vote on their own threads.
+
+Permission: Users can vote on any conversation/thread they can see (visibility-based).
+"""
+type VoteConversationMutation {
+  ok: Boolean
+  message: String
+  obj: ConversationType
+}
+
+"""
+Remove user's vote from a conversation/thread.
+
+Permission: Users can remove their vote from any conversation they can see.
+"""
+type RemoveConversationVoteMutation {
+  ok: Boolean
+  message: String
+  obj: ConversationType
+}
+
+"""Mark a single notification as read."""
+type MarkNotificationReadMutation {
+  ok: Boolean
+  message: String
+  notification: NotificationType
+}
+
+"""Mark a single notification as unread."""
+type MarkNotificationUnreadMutation {
+  ok: Boolean
+  message: String
+  notification: NotificationType
+}
+
+"""Mark all of the current user's notifications as read."""
+type MarkAllNotificationsReadMutation {
+  ok: Boolean
+  message: String
+
+  """Number of notifications marked as read"""
+  count: Int
+}
+
+"""Delete a notification."""
+type DeleteNotificationMutation {
+  ok: Boolean
+  message: String
+}
+
+"""Create a new agent configuration (admin/corpus owner only)."""
+type CreateAgentConfigurationMutation {
+  ok: Boolean
+  message: String
+  agent: AgentConfigurationType
+}
+
+"""Update an existing agent configuration."""
+type UpdateAgentConfigurationMutation {
+  ok: Boolean
+  message: String
+  agent: AgentConfigurationType
+}
+
+"""Delete an agent configuration."""
+type DeleteAgentConfigurationMutation {
+  ok: Boolean
+  message: String
+}

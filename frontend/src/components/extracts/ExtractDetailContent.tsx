@@ -1,0 +1,894 @@
+/**
+ * ExtractDetailContent - Shared content component for extract detail views
+ *
+ * This component contains the core UI for displaying extract details,
+ * used by both the full-page ExtractDetail and the embedded CorpusExtractDetail.
+ */
+
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
+import styled from "styled-components";
+import { OS_LEGAL_COLORS } from "../../assets/configurations/osLegalStyles";
+import { useMutation, useQuery } from "@apollo/client";
+import { toast } from "react-toastify";
+import {
+  Button,
+  Chip,
+  StatBlock,
+  StatGrid,
+  Tabs,
+  TabList,
+  Tab,
+  TabPanels,
+  TabPanel,
+  EmptyState,
+} from "@os-legal/ui";
+import { RefreshCw, Play, Plus, Trash2, Download } from "lucide-react";
+
+import {
+  ColumnType,
+  DatacellType,
+  DocumentType,
+  ExtractType,
+} from "../../types/graphql-api";
+import {
+  RequestGetExtractOutput,
+  REQUEST_GET_EXTRACT,
+  RequestGetExtractInput,
+} from "../../graphql/queries";
+import {
+  REQUEST_ADD_DOC_TO_EXTRACT,
+  REQUEST_REMOVE_DOC_FROM_EXTRACT,
+  REQUEST_DELETE_COLUMN,
+  REQUEST_CREATE_COLUMN,
+  REQUEST_CREATE_FIELDSET,
+  REQUEST_UPDATE_EXTRACT,
+  REQUEST_START_EXTRACT,
+  RequestAddDocToExtractInputType,
+  RequestAddDocToExtractOutputType,
+  RequestRemoveDocFromExtractInputType,
+  RequestRemoveDocFromExtractOutputType,
+  RequestDeleteColumnInputType,
+  RequestDeleteColumnOutputType,
+  RequestCreateColumnInputType,
+  RequestCreateColumnOutputType,
+  RequestCreateFieldsetInputType,
+  RequestCreateFieldsetOutputType,
+  RequestUpdateExtractInputType,
+  RequestUpdateExtractOutputType,
+  RequestStartExtractInputType,
+  RequestStartExtractOutputType,
+} from "../../graphql/mutations";
+import { ExtractDataGrid, ExtractDataGridHandle } from "./datagrid/DataGrid";
+import { ExtractIterationsTab } from "./iterations/ExtractIterationsTab";
+import { CreateColumnModal } from "../widgets/modals/CreateColumnModal";
+import { ConfirmModal } from "../widgets/modals/ConfirmModal";
+import { getExtractStatus, formatExtractDate } from "../../utils/extractUtils";
+import { useExtractCompletionNotification } from "../../hooks/useExtractCompletionNotification";
+import { LoadingOverlay } from "../common/LoadingOverlay";
+
+// Styled Components
+const StatsSection = styled.div`
+  margin-bottom: 24px;
+`;
+
+const TabsSection = styled.div`
+  margin-bottom: 24px;
+`;
+
+const DataHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+`;
+
+const DataTitle = styled.span`
+  font-size: 14px;
+  font-weight: 600;
+  color: ${OS_LEGAL_COLORS.textSecondary};
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+`;
+
+const DataCount = styled.span`
+  font-size: 13px;
+  color: ${OS_LEGAL_COLORS.textMuted};
+`;
+
+const GridContainer = styled.div<{ $compact?: boolean }>`
+  min-height: ${(props) => (props.$compact ? "300px" : "400px")};
+  background: #ffffff;
+  border: 1px solid ${OS_LEGAL_COLORS.border};
+  border-radius: 12px;
+  overflow: hidden;
+`;
+
+const DocumentsList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const DocumentItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #ffffff;
+  border: 1px solid ${OS_LEGAL_COLORS.border};
+  border-radius: 8px;
+  transition: border-color 0.15s;
+
+  &:hover {
+    border-color: ${OS_LEGAL_COLORS.borderHover};
+  }
+`;
+
+const DocumentIcon = styled.div`
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: ${OS_LEGAL_COLORS.surfaceLight};
+  color: ${OS_LEGAL_COLORS.textSecondary};
+  flex-shrink: 0;
+`;
+
+const DocumentInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const DocumentName = styled.div`
+  font-size: 13px;
+  font-weight: 500;
+  color: ${OS_LEGAL_COLORS.textPrimary};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const DocumentMeta = styled.div`
+  font-size: 12px;
+  color: ${OS_LEGAL_COLORS.textMuted};
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+`;
+
+const SchemaList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`;
+
+const SchemaColumn = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid ${OS_LEGAL_COLORS.border};
+  border-radius: 8px;
+`;
+
+const SchemaColumnIcon = styled.div`
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: ${OS_LEGAL_COLORS.surfaceLight};
+  color: ${OS_LEGAL_COLORS.textSecondary};
+`;
+
+const SchemaColumnInfo = styled.div`
+  flex: 1;
+`;
+
+const SchemaColumnName = styled.div`
+  font-size: 13px;
+  font-weight: 500;
+  color: ${OS_LEGAL_COLORS.textPrimary};
+`;
+
+const SchemaColumnType = styled.div`
+  font-size: 11px;
+  color: ${OS_LEGAL_COLORS.textMuted};
+  margin-top: 2px;
+`;
+
+const SchemaColumnActions = styled.div`
+  display: flex;
+  gap: 4px;
+`;
+
+const IconButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid ${OS_LEGAL_COLORS.border};
+  border-radius: 6px;
+  color: ${OS_LEGAL_COLORS.textSecondary};
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    background: ${OS_LEGAL_COLORS.surfaceLight};
+    color: ${OS_LEGAL_COLORS.textPrimary};
+    border-color: ${OS_LEGAL_COLORS.borderHover};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const RunningState = styled.div`
+  padding: 40px 20px;
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid ${OS_LEGAL_COLORS.border};
+  border-radius: 12px;
+`;
+
+const Spinner = styled.div`
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  border: 3px solid ${OS_LEGAL_COLORS.border};
+  border-top-color: ${OS_LEGAL_COLORS.accent};
+  animation: spin 1s linear infinite;
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`;
+
+const RunningTitle = styled.h3`
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+  color: ${OS_LEGAL_COLORS.textPrimary};
+`;
+
+const RunningDescription = styled.p`
+  margin: 0;
+  color: ${OS_LEGAL_COLORS.textSecondary};
+  font-size: 13px;
+`;
+
+const EmptyWrapper = styled.div`
+  padding: 40px 20px;
+  background: white;
+  border: 1px solid ${OS_LEGAL_COLORS.border};
+  border-radius: 12px;
+`;
+
+// Shared Icons
+export const DocumentSvgIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+    <path d="M4 1.5A1.5 1.5 0 015.5 0h5.586a.5.5 0 01.353.146l2.415 2.415a.5.5 0 01.146.353V14.5a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 014 14.5v-13zM5.5 1a.5.5 0 00-.5.5v13a.5.5 0 00.5.5h7a.5.5 0 00.5-.5V3.707L10.293 1H5.5z" />
+    <path d="M6 4.5a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5z" />
+  </svg>
+);
+
+export const ColumnSvgIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+    <path d="M0 2a1 1 0 011-1h14a1 1 0 011 1v12a1 1 0 01-1 1H1a1 1 0 01-1-1V2zm5 0v12h6V2H5zM4 2H1v12h3V2zm8 0v12h3V2h-3z" />
+  </svg>
+);
+
+export const RowSvgIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+    <path d="M0 2a1 1 0 011-1h14a1 1 0 011 1v12a1 1 0 01-1 1H1a1 1 0 01-1-1V2zm1 4h14V2H1v4zm0 1v4h14V7H1zm0 5v2h14v-2H1z" />
+  </svg>
+);
+
+export const CheckSvgIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+    <path
+      fillRule="evenodd"
+      d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l4.25-4.25z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+
+export const TableSvgIcon = ({ size = 40 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 40 40" fill="currentColor">
+    <path d="M6 8a4 4 0 014-4h20a4 4 0 014 4v24a4 4 0 01-4 4H10a4 4 0 01-4-4V8zm4-2a2 2 0 00-2 2v6h24V8a2 2 0 00-2-2H10zm22 10H8v16a2 2 0 002 2h20a2 2 0 002-2V16zm-22 4h8v4H10v-4zm10 0h10v4H20v-4zm-10 6h8v4H10v-4zm10 0h10v4H20v-4z" />
+  </svg>
+);
+
+// Handle type for imperative methods
+export interface ExtractDetailContentHandle {
+  exportToCsv: () => void;
+  refetch: () => void;
+  startExtract: () => void;
+}
+
+// Props
+export interface ExtractDetailContentProps {
+  extractId: string;
+  /** Compact mode for embedded views */
+  compact?: boolean;
+  /** Called when extract data is loaded */
+  onExtractLoaded?: (extract: ExtractType) => void;
+}
+
+export const ExtractDetailContent = forwardRef<
+  ExtractDetailContentHandle,
+  ExtractDetailContentProps
+>(({ extractId, compact = false, onExtractLoaded }, ref) => {
+  const dataGridRef = useRef<ExtractDataGridHandle>(null);
+
+  // Local state
+  const [extract, setExtract] = useState<ExtractType | null>(null);
+  const [cells, setCells] = useState<DatacellType[]>([]);
+  const [rows, setRows] = useState<DocumentType[]>([]);
+  const [columns, setColumns] = useState<ColumnType[]>([]);
+  const [activeTab, setActiveTab] = useState("data");
+  const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
+  const [editingColumn, setEditingColumn] = useState<ColumnType | null>(null);
+  const [deleteColumnId, setDeleteColumnId] = useState<string | null>(null);
+
+  // Query for full extract data
+  const {
+    loading,
+    data: extractData,
+    refetch,
+  } = useQuery<RequestGetExtractOutput, RequestGetExtractInput>(
+    REQUEST_GET_EXTRACT,
+    {
+      variables: { id: extractId },
+      skip: !extractId,
+      fetchPolicy: "cache-and-network",
+      nextFetchPolicy: "cache-first",
+      notifyOnNetworkStatusChange: true,
+    }
+  );
+
+  // Listen for extract completion via WebSocket
+  const isRunningExtract = Boolean(
+    extract && extract.started && !extract.finished && !extract.error
+  );
+  useExtractCompletionNotification({
+    extractId: extract?.id ?? null,
+    onComplete: () => {
+      refetch();
+    },
+    enabled: isRunningExtract,
+  });
+
+  // Update local state when query data changes
+  useEffect(() => {
+    if (extractData?.extract) {
+      const { fullDatacellList, fullDocumentList, fieldset } =
+        extractData.extract;
+      setCells(fullDatacellList ?? []);
+      setRows(fullDocumentList ?? []);
+      setColumns(fieldset?.fullColumnList ?? []);
+      setExtract(extractData.extract);
+      onExtractLoaded?.(extractData.extract);
+    }
+  }, [extractData, onExtractLoaded]);
+
+  // Mutations
+  const [addDocsToExtract, { loading: addDocsLoading }] = useMutation<
+    RequestAddDocToExtractOutputType,
+    RequestAddDocToExtractInputType
+  >(REQUEST_ADD_DOC_TO_EXTRACT, {
+    onCompleted: (data) => {
+      setRows((prev) => [
+        ...prev,
+        ...(data.addDocsToExtract.objs as DocumentType[]),
+      ]);
+      toast.success("Added documents to extract.");
+    },
+    onError: () => toast.error("Could not add documents."),
+  });
+
+  const [removeDocsFromExtract, { loading: removeDocsLoading }] = useMutation<
+    RequestRemoveDocFromExtractOutputType,
+    RequestRemoveDocFromExtractInputType
+  >(REQUEST_REMOVE_DOC_FROM_EXTRACT, {
+    onCompleted: (data) => {
+      setRows((prev) =>
+        prev.filter(
+          (r) => !data.removeDocsFromExtract.idsRemoved.includes(r.id)
+        )
+      );
+      toast.success("Removed documents from extract.");
+    },
+    onError: () => toast.error("Could not remove documents."),
+  });
+
+  const [deleteColumn] = useMutation<
+    RequestDeleteColumnOutputType,
+    RequestDeleteColumnInputType
+  >(REQUEST_DELETE_COLUMN, {
+    onCompleted: (data) => {
+      setColumns((prev) =>
+        prev.filter((c) => c.id !== data.deleteColumn.deletedId)
+      );
+      toast.success("Column deleted.");
+    },
+    onError: () => toast.error("Could not delete column."),
+  });
+
+  const [createFieldset] = useMutation<
+    RequestCreateFieldsetOutputType,
+    RequestCreateFieldsetInputType
+  >(REQUEST_CREATE_FIELDSET);
+
+  const [updateExtract] = useMutation<
+    RequestUpdateExtractOutputType,
+    RequestUpdateExtractInputType
+  >(REQUEST_UPDATE_EXTRACT, {
+    onCompleted: () => {
+      toast.success("Extract updated.");
+      refetch();
+    },
+    onError: () => toast.error("Could not update extract."),
+  });
+
+  const [createColumn] = useMutation<
+    RequestCreateColumnOutputType,
+    RequestCreateColumnInputType
+  >(REQUEST_CREATE_COLUMN, {
+    onCompleted: (data) => {
+      if (data.createColumn.ok) {
+        setColumns((prev) => [...prev, data.createColumn.obj]);
+        toast.success("Column created.");
+      }
+      setIsColumnModalOpen(false);
+      setEditingColumn(null);
+    },
+    onError: () => {
+      toast.error("Could not create column.");
+      setIsColumnModalOpen(false);
+    },
+  });
+
+  const [startExtract, { loading: startLoading }] = useMutation<
+    RequestStartExtractOutputType,
+    RequestStartExtractInputType
+  >(REQUEST_START_EXTRACT, {
+    onCompleted: (data) => {
+      toast.success("Extract started!");
+      setExtract((prev) =>
+        prev ? { ...prev, ...data.startExtract.obj } : prev
+      );
+    },
+    onError: () => toast.error("Could not start extract."),
+  });
+
+  // Expose imperative methods
+  useImperativeHandle(ref, () => ({
+    exportToCsv: () => dataGridRef.current?.exportToCsv(),
+    refetch: () => refetch(),
+    startExtract: () => {
+      if (extract) {
+        startExtract({ variables: { extractId: extract.id } });
+      }
+    },
+  }));
+
+  // Handlers
+  const handleAddDocIds = useCallback(
+    (extractIdParam: string, documentIds: string[]) => {
+      addDocsToExtract({
+        variables: { extractId: extractIdParam, documentIds },
+      });
+    },
+    [addDocsToExtract]
+  );
+
+  const handleRemoveDocIds = useCallback(
+    (extractIdParam: string, documentIds: string[]) => {
+      removeDocsFromExtract({
+        variables: {
+          extractId: extractIdParam,
+          documentIdsToRemove: documentIds,
+        },
+      });
+    },
+    [removeDocsFromExtract]
+  );
+
+  const handleDeleteColumn = async (columnId: string) => {
+    if (!extract?.fieldset?.id) return;
+
+    if (!extract.fieldset.inUse) {
+      await deleteColumn({ variables: { id: columnId } });
+    } else {
+      try {
+        const { data: fieldsetData } = await createFieldset({
+          variables: {
+            name: `${extract.fieldset.name} (edited)`,
+            description: extract.fieldset.description || "",
+          },
+        });
+
+        const newFieldsetId = fieldsetData?.createFieldset.obj.id;
+        if (!newFieldsetId) throw new Error("Fieldset creation failed.");
+
+        const columnsToCopy = columns.filter((col) => col.id !== columnId);
+        await Promise.all(
+          columnsToCopy.map((column) =>
+            createColumn({
+              variables: {
+                fieldsetId: newFieldsetId,
+                name: column.name,
+                query: column.query || "",
+                matchText: column.matchText,
+                outputType: column.outputType,
+                limitToLabel: column.limitToLabel,
+                instructions: column.instructions,
+                taskName: column.taskName,
+              },
+            })
+          )
+        );
+
+        await updateExtract({
+          variables: { id: extract.id, fieldsetId: newFieldsetId },
+        });
+      } catch (error) {
+        console.error(error);
+        toast.error("Error deleting column.");
+      }
+    }
+    setDeleteColumnId(null);
+  };
+
+  const handleAddColumn = () => {
+    setEditingColumn(null);
+    setIsColumnModalOpen(true);
+  };
+
+  const handleEditColumn = (column: ColumnType) => {
+    setEditingColumn(column);
+    setIsColumnModalOpen(true);
+  };
+
+  const handleColumnSubmit = async (
+    data: Omit<RequestCreateColumnInputType, "fieldsetId">
+  ) => {
+    await createColumn({
+      variables: {
+        fieldsetId: extract?.fieldset?.id,
+        ...data,
+      },
+    });
+    setIsColumnModalOpen(false);
+    setEditingColumn(null);
+  };
+
+  const handleRowUpdate = useCallback((updatedRow: DocumentType) => {
+    setRows((prev) =>
+      prev.map((row) => (row.id === updatedRow.id ? updatedRow : row))
+    );
+  }, []);
+
+  // Computed values
+  const isRunning = extract?.started && !extract?.finished && !extract?.error;
+  const isComplete = extract?.started && extract?.finished && !extract?.error;
+  const isFailed = Boolean(extract?.error);
+  const canEdit = !extract?.started;
+
+  const stats = useMemo(() => {
+    const completedCells = cells.filter((c) => c.completed).length;
+    const totalCells = cells.length;
+    const successRate =
+      totalCells > 0 ? Math.round((completedCells / totalCells) * 100) : 0;
+
+    return {
+      documents: rows.length,
+      columns: columns.length,
+      rows: rows.length,
+      successRate: isComplete ? `${successRate}%` : "—",
+    };
+  }, [rows, columns, cells, isComplete]);
+
+  // Loading state
+  if (loading && !extract) {
+    return <LoadingOverlay active content="Loading extract details..." />;
+  }
+
+  if (!extract) {
+    return (
+      <EmptyWrapper>
+        <EmptyState
+          icon={<TableSvgIcon />}
+          title="Extract not found"
+          description="The extract you're looking for doesn't exist or you don't have access."
+          size={compact ? "md" : "lg"}
+        />
+      </EmptyWrapper>
+    );
+  }
+
+  return (
+    <>
+      {/* Stats */}
+      <StatsSection>
+        <StatGrid columns={4}>
+          <StatBlock
+            value={String(stats.documents)}
+            label="Documents"
+            sublabel="processed"
+            icon={<DocumentSvgIcon />}
+          />
+          <StatBlock
+            value={String(stats.columns)}
+            label="Columns"
+            sublabel="in schema"
+            icon={<ColumnSvgIcon />}
+          />
+          <StatBlock
+            value={String(stats.rows)}
+            label="Rows"
+            sublabel="extracted"
+            icon={<RowSvgIcon />}
+          />
+          <StatBlock
+            value={stats.successRate}
+            label="Success"
+            sublabel="rate"
+            icon={<CheckSvgIcon />}
+          />
+        </StatGrid>
+      </StatsSection>
+
+      {/* Running state overlay */}
+      {isRunning && (
+        <RunningState>
+          <Spinner />
+          <RunningTitle>Extraction in progress...</RunningTitle>
+          <RunningDescription>
+            Processing documents. You can close this and check back later.
+          </RunningDescription>
+        </RunningState>
+      )}
+
+      {/* Failed state */}
+      {isFailed && (
+        <EmptyWrapper>
+          <EmptyState
+            title="Extraction failed"
+            description="The extraction could not be completed."
+            size={compact ? "md" : "lg"}
+            action={
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<RefreshCw size={14} />}
+                onClick={() =>
+                  startExtract({ variables: { extractId: extract.id } })
+                }
+              >
+                Retry
+              </Button>
+            }
+          />
+        </EmptyWrapper>
+      )}
+
+      {/* Tabs - only show when not running and not failed */}
+      {!isRunning && !isFailed && (
+        <TabsSection>
+          <Tabs value={activeTab} onChange={setActiveTab}>
+            <TabList>
+              <Tab value="data">Data</Tab>
+              <Tab value="documents">Documents</Tab>
+              <Tab value="schema">Schema</Tab>
+              <Tab value="iterations">Iterations</Tab>
+            </TabList>
+
+            <TabPanels>
+              {/* Data Tab */}
+              <TabPanel value="data">
+                <div style={{ marginTop: 20 }}>
+                  <DataHeader>
+                    <DataTitle>Extracted Data</DataTitle>
+                    <DataCount>{rows.length} rows</DataCount>
+                  </DataHeader>
+                  <GridContainer $compact={compact}>
+                    <ExtractDataGrid
+                      ref={dataGridRef}
+                      extract={extract}
+                      cells={cells}
+                      rows={rows}
+                      columns={columns}
+                      onAddDocIds={handleAddDocIds}
+                      onRemoveDocIds={handleRemoveDocIds}
+                      onRemoveColumnId={(id) => setDeleteColumnId(id)}
+                      onUpdateRow={handleRowUpdate}
+                      onAddColumn={handleAddColumn}
+                      loading={loading || addDocsLoading || removeDocsLoading}
+                    />
+                  </GridContainer>
+                </div>
+              </TabPanel>
+
+              {/* Documents Tab */}
+              <TabPanel value="documents">
+                <div style={{ marginTop: 20 }}>
+                  <DataHeader>
+                    <DataTitle>Source Documents</DataTitle>
+                    <DataCount>{rows.length} documents</DataCount>
+                  </DataHeader>
+                  {rows.length > 0 ? (
+                    <DocumentsList>
+                      {rows.map((doc) => (
+                        <DocumentItem key={doc.id}>
+                          <DocumentIcon>
+                            <DocumentSvgIcon />
+                          </DocumentIcon>
+                          <DocumentInfo>
+                            <DocumentName>{doc.title}</DocumentName>
+                            <DocumentMeta>
+                              <span>PDF</span>
+                              <span>•</span>
+                              <span>1 row extracted</span>
+                            </DocumentMeta>
+                          </DocumentInfo>
+                        </DocumentItem>
+                      ))}
+                    </DocumentsList>
+                  ) : (
+                    <EmptyWrapper>
+                      <EmptyState
+                        icon={<DocumentSvgIcon size={32} />}
+                        title="No documents yet"
+                        description="Add documents to extract data from."
+                        size="sm"
+                      />
+                    </EmptyWrapper>
+                  )}
+                </div>
+              </TabPanel>
+
+              {/* Schema Tab */}
+              <TabPanel value="schema">
+                <div style={{ marginTop: 20 }}>
+                  <DataHeader>
+                    <DataTitle>Extract Schema</DataTitle>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      <DataCount>{columns.length} columns</DataCount>
+                      {canEdit && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          leftIcon={<Plus size={12} />}
+                          onClick={handleAddColumn}
+                        >
+                          Add
+                        </Button>
+                      )}
+                    </div>
+                  </DataHeader>
+                  {columns.length > 0 ? (
+                    <SchemaList>
+                      {columns.map((col) => (
+                        <SchemaColumn key={col.id}>
+                          <SchemaColumnIcon>
+                            <ColumnSvgIcon />
+                          </SchemaColumnIcon>
+                          <SchemaColumnInfo>
+                            <SchemaColumnName>{col.name}</SchemaColumnName>
+                            <SchemaColumnType>
+                              {col.outputType}
+                            </SchemaColumnType>
+                          </SchemaColumnInfo>
+                          {canEdit && (
+                            <SchemaColumnActions>
+                              <IconButton
+                                aria-label="Edit column"
+                                onClick={() => handleEditColumn(col)}
+                              >
+                                <RefreshCw size={12} />
+                              </IconButton>
+                              <IconButton
+                                aria-label="Delete column"
+                                onClick={() => setDeleteColumnId(col.id)}
+                              >
+                                <Trash2 size={12} />
+                              </IconButton>
+                            </SchemaColumnActions>
+                          )}
+                        </SchemaColumn>
+                      ))}
+                    </SchemaList>
+                  ) : (
+                    <EmptyWrapper>
+                      <EmptyState
+                        icon={<ColumnSvgIcon size={32} />}
+                        title="No columns defined"
+                        description="Add columns to define what data to extract."
+                        size="sm"
+                        action={
+                          canEdit ? (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              leftIcon={<Plus size={14} />}
+                              onClick={handleAddColumn}
+                            >
+                              Add Column
+                            </Button>
+                          ) : undefined
+                        }
+                      />
+                    </EmptyWrapper>
+                  )}
+                </div>
+              </TabPanel>
+
+              {/* Iterations Tab — model drift, doc-version drift, schema tweaks */}
+              <TabPanel value="iterations">
+                <div style={{ marginTop: 20 }}>
+                  <ExtractIterationsTab
+                    extract={extract}
+                    onIterationCreated={refetch}
+                  />
+                </div>
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </TabsSection>
+      )}
+
+      {/* Modals */}
+      <CreateColumnModal
+        open={isColumnModalOpen}
+        existing_column={editingColumn}
+        onClose={() => {
+          setIsColumnModalOpen(false);
+          setEditingColumn(null);
+        }}
+        onSubmit={handleColumnSubmit}
+      />
+
+      <ConfirmModal
+        message="Are you sure you want to delete this column?"
+        visible={deleteColumnId !== null}
+        yesAction={() => deleteColumnId && handleDeleteColumn(deleteColumnId)}
+        noAction={() => setDeleteColumnId(null)}
+        toggleModal={() => setDeleteColumnId(null)}
+      />
+    </>
+  );
+});
+
+ExtractDetailContent.displayName = "ExtractDetailContent";
+
+export default ExtractDetailContent;

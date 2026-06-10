@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Load runtime environment. Only one runtime env script should be included -->
+    <script src="/env-config.js"></script>
+    <!-- SVG favicon (modern browsers); .ico kept as legacy fallback. -->
+    <!-- `sizes="any"` is the spec-correct value for scalable formats — pixel
+         sizes on SVG <link rel="icon"> are semantically wrong (the source
+         tile-rounded versions only exist as a perceptual nudge for browser
+         devtools that surface tab/bookmark sizing). -->
+    <link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" sizes="any" href="/favicon-32.svg" />
+    <link rel="icon" type="image/svg+xml" sizes="any" href="/favicon-16.svg" />
+    <link rel="alternate icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#FAFAF7" />
+    <meta
+      name="description"
+      content="cite turns a repository of documents into an open citation graph that humans and AI agents can read, reason over, and contribute back to. Built like infrastructure, contributor-owned, open license."
+    />
+    <meta property="og:type" content="website" key="Type" />
+    <meta
+      property="og:title"
+      content="[cite] — the citation layer for agentic workflows"
+      key="Title"
+    />
+    <meta
+      property="og:description"
+      content="Every document cites other documents. cite turns that graph into open infrastructure for research tools, drafting tools, and AI agents."
+      key="Description"
+    />
+    <meta
+      property="og:url"
+      content="https://cite.opensource.legal/"
+      key="Url"
+    />
+    <meta
+      property="og:image"
+      content="/OpenContractsScreenshot.png"
+      key="Image"
+    />
+    <meta property="og:site_name" content="cite" key="Site" />
+
+    <!-- Google Fonts - Inter (UI) + Source Serif 4 (display / wordmark / body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,400&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Agent discovery: llms.txt and MCP server for AI crawlers -->
+    <link
+      rel="alternate"
+      type="text/plain"
+      href="/llms.txt"
+      title="LLM instructions"
+    />
+    <link
+      rel="alternate"
+      type="application/json"
+      href="/.well-known/mcp.json"
+      title="MCP server discovery"
+    />
+
+    <!-- Structured data: application, search, source code, and MCP discovery -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebApplication",
+            "@id": "https://cite.opensource.legal/#app",
+            "name": "cite",
+            "alternateName": "OpenContracts",
+            "description": "The citation layer for agentic workflows. cite turns a repository of documents into an open, traversable citation graph that humans and AI agents can read, reason over, and contribute back to.",
+            "url": "https://cite.opensource.legal/",
+            "license": "https://opensource.org/licenses/MIT",
+            "applicationCategory": "BusinessApplication",
+            "applicationSubCategory": "Citation Graph",
+            "operatingSystem": "Web",
+            "softwareVersion": "3.0",
+            "inLanguage": "en",
+            "isAccessibleForFree": true,
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "featureList": [
+              "Open citation graph of the public record",
+              "Document annotation and citation editing",
+              "AI-powered semantic search",
+              "Natural language querying via Model Context Protocol",
+              "Collaborative corpus management",
+              "Vector embeddings with pgvector"
+            ],
+            "screenshot": "/OpenContractsScreenshot.png",
+            "author": {
+              "@type": "Organization",
+              "@id": "https://opensource.legal/#org"
+            },
+            "potentialAction": [
+              {
+                "@type": "SearchAction",
+                "name": "Search public document collections",
+                "target": {
+                  "@type": "EntryPoint",
+                  "urlTemplate": "/api/search/?q={search_term_string}",
+                  "httpMethod": "GET"
+                },
+                "query-input": "required name=search_term_string"
+              },
+              {
+                "@type": "ConsumeAction",
+                "name": "Connect via Model Context Protocol (MCP)",
+                "description": "AI agents can connect to this instance's MCP server for read-only access to public corpuses, documents, annotations, and discussions. Endpoint: /mcp/ (Streamable HTTP, JSON-RPC 2.0). No authentication required. See /llms.txt for full details.",
+                "target": {
+                  "@type": "EntryPoint",
+                  "urlTemplate": "/mcp/",
+                  "contentType": "application/json",
+                  "httpMethod": "POST"
+                }
+              }
+            ]
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://opensource.legal/#org",
+            "name": "Open Source Legal",
+            "url": "https://opensource.legal"
+          },
+          {
+            "@type": "SoftwareSourceCode",
+            "name": "cite",
+            "alternateName": "OpenContracts",
+            "description": "Open commons of the citation graph. The codebase that powers cite, formerly released as OpenContracts.",
+            "codeRepository": "https://github.com/Open-Source-Legal/OpenContracts",
+            "programmingLanguage": ["Python", "TypeScript"],
+            "runtimePlatform": ["Django", "React"],
+            "license": "https://opensource.org/licenses/MIT",
+            "author": {
+              "@type": "Organization",
+              "@id": "https://opensource.legal/#org"
+            }
+          }
+        ]
+      }
+    </script>
+
+    <!-- iOS does not support SVG apple-touch-icon reliably; use the 192px
+         cite PNG. The full PWA install icon set (192/512 + maskable) lives
+         in manifest.json. Both files are generated from the cite icon mark
+         SVG via scripts/generate-brand-pngs.js. -->
+    <link rel="apple-touch-icon" href="/cite-192.png" />
+    <!--
+      manifest.json provides metadata used when your web app is installed on a
+      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
+    -->
+    <link rel="manifest" href="/manifest.json" />
+    <!--
+      Vite serves files from the 'public' directory at the root path '/'.
+      Make sure your assets (favicon.ico, manifest.json, etc.) are in the 'public' folder.
+    -->
+    <title>cite — the citation layer for agentic workflows</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <!-- Removed duplicate runtime env loader to avoid overrides: env.js -->
+    <script type="module" src="/src/index.tsx"></script>
+    <div id="root" style="overflow-x: hidden"></div>
+    <!--
+      This HTML file is a template.
+      If you open it directly in the browser, you will see an empty page.
+
+      You can add webfonts, meta tags, or analytics to this file.
+      The build step will place the bundled scripts into the <body> tag.
+
+      To begin the development, run `npm start` or `yarn start` (or `yarn dev` with Vite).
+      To create a production bundle, use `npm run build` or `yarn build`.
+    -->
+  </body>
+</html>

@@ -1,0 +1,270 @@
+name: Backend CI
+
+# Enable Buildkit and let compose use it to speed up image building
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+  SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL: True
+
+defaults:
+ run:
+  working-directory: ./
+
+on:
+  pull_request:
+    branches: [ "master", "main", "v*" ]
+    paths-ignore: [ "docs/**" ]
+
+  push:
+    branches: [ "master", "main", "v*" ]
+    paths-ignore: [ "docs/**" ]
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    # Path filtering only gates pull_request events; pushes to protected
+    # branches always run downstream regardless of which files changed.
+    # dorny/paths-filter@v4 additionally needs a checked-out repo on push
+    # events (it shells out to `git branch --show-current`), so scoping
+    # this job to pull_request avoids the "fatal: not a git repository"
+    # red X that would otherwise appear on every push to main.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # Fail open: if this job errors (e.g., transient GitHub API failure),
+    # downstream jobs should still run rather than being silently skipped.
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      # No checkout needed: dorny/paths-filter@v4 reads diffs from the
+      # pull_request event payload.
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'opencontractserver/**'
+              - 'config/**'
+              - '*.py'
+              - 'requirements/**'
+              - 'test.yml'
+              - 'compose/**'
+              - 'Dockerfile*'
+              - '.pre-commit-config.yaml'
+              - 'setup.cfg'
+              - 'mypy.ini'
+              - 'pyproject.toml'
+              - '.github/workflows/backend.yml'
+
+  linter:
+    needs: changes
+    # Run on every push, and on PRs unless the filter explicitly reports
+    # no backend changes ('false'). `always()` is required because the
+    # `changes` job is skipped on push events (see its `if:` above), and
+    # a skipped `needs` target would otherwise cascade-skip this job.
+    # The `!= 'false'` form also preserves the fail-open behaviour on
+    # PRs where `changes` errors transiently (outputs.backend is '').
+    if: always() && (github.event_name == 'push' || needs.changes.outputs.backend != 'false')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements/base.txt
+            requirements/local.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements/local.txt
+
+      - name: Run pre-commit
+        run: pre-commit run --all-files
+
+      - name: Run mypy
+        # Runs from requirements/local.txt (not via pre-commit) so CI is
+        # authoritative even when contributors skip the hook. Keep the
+        # mypy pin in requirements/local.txt in sync with the `rev:` of
+        # the mirrors-mypy hook in .pre-commit-config.yaml — a drift
+        # means the hook and CI can disagree silently. See
+        # docs/typing/README.md.
+        run: python -m mypy --config-file mypy.ini opencontractserver config
+
+  pytest:
+    needs: [changes, linter]
+    # Same fail-open semantics as the linter gate above.
+    if: always() && needs.linter.result == 'success' && (github.event_name == 'push' || needs.changes.outputs.backend != 'false')
+    runs-on: yuge
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      actions: read
+      # ``packages: write`` lets the pytest job push the buildx layer cache to
+      # ``ghcr.io/{org}/{repo}/django-local-cache:main`` on ``main`` pushes (the
+      # ``--cache-to`` step below is gated to that event). PRs only read the
+      # cache — the ``write`` scope is harmless for them since their token is
+      # still PR-scoped (no cross-fork push).
+      packages: write
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v6
+
+      - name: Store Codecov Env Flags
+        continue-on-error: true
+        run: |
+          ci_env=`bash <(curl -s https://codecov.io/env)`
+          echo "$ci_env"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Use the ghcr.io registry as the buildx layer-cache backend instead of
+      # the GitHub Actions cache (``type=gha``). The registry cache is portable:
+      # the same layers CI writes are pullable from a local dev machine and any
+      # prod-deploy host (see ``local.yml`` / ``production.yml`` ``cache_from``).
+      # GHA cache only works inside GitHub Actions, so it would not help
+      # contributors building from a fresh checkout.
+      #
+      # The cache image inherits the repo's visibility (public for this repo,
+      # so no auth is required to *pull* on first publish — confirm in
+      # GitHub Packages settings if the package was created private).
+      - name: Login to ghcr.io
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the Stack
+        # The django image rebuild was the biggest pre-test cost on every PR
+        # (~2:40 wall) because the runner ships from scratch every time. The
+        # buildx layer cache restores most layers (apt-get, pip wheel, spaCy
+        # model fetch) in seconds when their inputs (Dockerfile, requirements,
+        # COPY'd source) are unchanged.
+        #
+        # ``cache-from`` is always set so PRs benefit from main's cache.
+        # ``cache-to`` only writes on ``push`` events (i.e. main-branch merges)
+        # — PR runs from forks can't push to ghcr packages anyway, and pushing
+        # from PRs would pollute main's cache key.
+        #
+        # The image is tagged to match the ``image:`` directive on the
+        # ``django`` service in test.yml, so the subsequent ``docker compose
+        # build`` recognises it as already built and only compiles the small
+        # ``postgres`` image (~5 s).
+        env:
+          CACHE_REF: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/django-local-cache:main
+        run: |
+          # Lowercase the cache ref — ghcr requires lowercase paths but the
+          # repo name on GitHub can be mixed-case (e.g., "OpenContracts").
+          CACHE_REF_LC="$(echo "$CACHE_REF" | tr '[:upper:]' '[:lower:]')"
+          CACHE_TO_FLAG=""
+          if [ "${{ github.event_name }}" = "push" ]; then
+            CACHE_TO_FLAG="--cache-to=type=registry,ref=${CACHE_REF_LC},mode=max"
+          fi
+          docker buildx build \
+            --load \
+            --cache-from="type=registry,ref=${CACHE_REF_LC}" \
+            ${CACHE_TO_FLAG} \
+            --tag opencontractserver_local_django \
+            --file compose/local/django/Dockerfile \
+            --build-arg GITHUB_ACTIONS=true \
+            .
+          docker compose -f test.yml build
+
+      # Note: a ``manage.py migrate`` step previously ran here against the
+      # ``opencontractserver`` default database. That database is never read
+      # by the test suite — pytest-django creates per-worker test databases
+      # (``test_opencontractserver_gw0``, ``_gw1``, …) on first invocation
+      # and runs migrations against those. ``DATABASES['default']['TEST']``
+      # does not declare a ``TEMPLATE``, so the default DB is not used as a
+      # createdb template either. The step was pure waste (~3 min wall) and
+      # has been removed; ``pytest --reuse-db`` (in pytest.ini) handles cold
+      # creation and warm reuse of the test DBs by itself.
+
+      # ``collectstatic`` previously ran here (~1:40 wall on a cold container
+      # start). The test suite does not serve static files — ``config/settings/
+      # test.py`` deliberately uses ``StaticFilesStorage`` (the manifest-less
+      # variant) so admin tests can resolve ``{% static %}`` URLs at template
+      # render time without needing the post-collectstatic manifest file. The
+      # step produced no test-relevant artefacts; the wall time was dominated
+      # by the django container cold start, not by the actual collection work.
+
+      - name: Verify Docker Containers
+        run: |
+          docker compose -f test.yml ps
+
+      - name: Capture Docker Compose Logs
+        if: failure()
+        run: |
+          docker compose -f test.yml logs --no-color > docker-compose-logs.txt
+
+      - name: Upload Docker Compose Logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-compose-logs
+          path: docker-compose-logs.txt
+
+      - name: Check Container Health
+        run: |
+          echo "=== Docker containers status ==="
+          docker compose -f test.yml ps
+          echo "=== Container logs (last 20 lines each) ==="
+          for container in $(docker compose -f test.yml ps -q); do
+            name=$(docker inspect -f '{{.Name}}' $container | sed 's/^\///')
+            echo "--- Logs for $name ---"
+            docker logs --tail 20 $container 2>&1 || true
+          done
+          echo "=== Memory usage ==="
+          docker stats --no-stream
+          free -h
+
+      - name: Run Backend Test Suite
+        timeout-minutes: 100
+        run: |
+          # Coverage instrumentation runs on both push and pull_request events
+          # so Codecov's PR patch status has a fresh report for the PR head
+          # commit. The Django image is built on Python 3.12 with
+          # ``COVERAGE_CORE=sysmon`` (set in .envs/.test/.django), so coverage
+          # uses ``sys.monitoring`` rather than the legacy C trace function —
+          # an order-of-magnitude cheaper instrumentation path on Python 3.12+.
+          #
+          # ``--dist loadscope`` is retained: a worksteal trial (PR #1767,
+          # initial commit) exposed ~39 test-order-dependency failures across
+          # plain ``TestCase`` subclasses that worked under loadscope's
+          # class-pinning. The underlying isolation bugs are tracked in
+          # docs/refactor_plans/2026-05-23-test-suite-speedup-A1-B1.md §6
+          # and need to be resolved before worksteal can be re-attempted.
+          #
+          # pytest-cov + pytest-xdist handle per-worker coverage merging.
+          docker compose -f test.yml run django pytest --cov --cov-report=xml -n auto --dist loadscope
+
+      - name: Verify Coverage File Exists
+        run: |
+          # Verify coverage.xml exists in the working directory
+          ls -la coverage.xml
+
+      - name: Upload Coverage Reports to Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: backend
+          name: backend-coverage
+          fail_ci_if_error: false
+
+      - name: Tear down the Stack
+        run:  docker compose -f test.yml down

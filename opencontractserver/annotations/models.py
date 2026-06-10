@@ -1,0 +1,1878 @@
+from __future__ import annotations
+
+import difflib
+import functools
+import hashlib
+import logging
+import uuid
+
+# Typed representations for the `json` payload
+from typing import TYPE_CHECKING, Any, Union, cast
+
+import django
+from django.contrib.auth import get_user_model
+from django.contrib.postgres.fields import ArrayField
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+
+# Switching from Django-tree-queries to django-cte as it
+# appears that django-tree-query has performance issues for large tables.
+# See https://github.com/feincms/django-tree-queries/issues/77
+# This will become an issue for annotations in particular. Since annotations will
+# have a simple structure and query anyway, using django-cte here. Can migrate models
+# using django-tree-queries down the road but shouldn't affect each other on
+# separate models.
+from guardian.models import GroupObjectPermissionBase, UserObjectPermissionBase
+from pgvector.django import HnswIndex, VectorField
+
+from opencontractserver.constants.search import HNSW_EF_CONSTRUCTION, HNSW_M
+from opencontractserver.shared.defaults import (
+    jsonfield_default_value,
+)
+from opencontractserver.shared.fields import NullableJSONField
+
+# Import your new managers
+from opencontractserver.shared.Managers import (
+    AnnotationManager,
+    EmbeddingManager,
+    NoteManager,
+    RelationshipManager,
+)
+from opencontractserver.shared.mixins import HasEmbeddingMixin
+from opencontractserver.shared.Models import BaseOCModel
+from opencontractserver.shared.utils import calc_oc_file_path
+
+from .compact_json import (
+    compact_annotation_json,
+    is_compact_format,
+    is_span_format,
+)
+from .json_types import MultipageAnnotationJson, SpanAnnotationJson
+
+if TYPE_CHECKING:
+    from django.contrib.auth.models import AbstractBaseUser
+
+User = get_user_model()
+logger = logging.getLogger(__name__)
+
+RELATIONSHIP_LABEL = "RELATIONSHIP_LABEL"
+DOC_TYPE_LABEL = "DOC_TYPE_LABEL"
+TOKEN_LABEL = "TOKEN_LABEL"
+SPAN_LABEL = "SPAN_LABEL"
+
+LABEL_TYPES = [
+    (RELATIONSHIP_LABEL, _("Relationship label.")),
+    (DOC_TYPE_LABEL, _("Document-level type label.")),
+    (TOKEN_LABEL, _("Token-level labels for token-based labeling")),
+    (SPAN_LABEL, _("Span labels for span-based labeling")),
+]
+
+# Define embedding dimensions constants
+EMBEDDING_DIM_384 = 384
+EMBEDDING_DIM_768 = 768
+EMBEDDING_DIM_1024 = 1024
+EMBEDDING_DIM_1536 = 1536
+EMBEDDING_DIM_2048 = 2048
+EMBEDDING_DIM_3072 = 3072
+EMBEDDING_DIM_4096 = 4096
+
+EMBEDDING_DIMENSIONS = [
+    (EMBEDDING_DIM_384, "384"),
+    (EMBEDDING_DIM_768, "768"),
+    (EMBEDDING_DIM_1024, "1024"),
+    (EMBEDDING_DIM_1536, "1536"),
+    (EMBEDDING_DIM_2048, "2048"),
+    (EMBEDDING_DIM_3072, "3072"),
+    (EMBEDDING_DIM_4096, "4096"),
+]
+
+
+# Allowed URL schemes for ``Annotation.link_url`` and OC_URL authoring
+# flows.  Anything not in this allow-list (notably ``javascript:`` and
+# ``data:``) is rejected to keep the click-to-open flow XSS-safe.
+LINK_URL_ALLOWED_SCHEMES: tuple[str, ...] = ("http://", "https://")
+
+
+def validate_link_url(url: str) -> None:
+    """Raise ``ValidationError`` if *url* is not a safe link target.
+
+    Accepts:
+      * ``http://`` / ``https://`` absolute URLs
+      * site-relative paths beginning with ``/``
+
+    Rejects every other scheme — particularly ``javascript:`` and ``data:``,
+    both of which would execute attacker-controlled code if reflected into
+    ``window.open`` on click.
+    """
+
+    if not url:
+        return
+    normalized = url.strip()
+    # ``//evil.com`` is a *protocol-relative* URL: browsers navigate to
+    # ``https://evil.com``. It starts with ``/`` but is NOT a site-relative
+    # path. Reject it before the allow-list check so the open-redirect
+    # vector closes here rather than in the renderer.
+    is_protocol_relative = normalized.startswith("//")
+    is_site_relative = normalized.startswith("/") and not is_protocol_relative
+    is_safe = (
+        normalized.lower().startswith(LINK_URL_ALLOWED_SCHEMES) or is_site_relative
+    )
+    if not is_safe:
+        raise ValidationError(
+            {
+                "link_url": (
+                    "link_url must be an http(s):// URL or a site-relative "
+                    "path starting with '/'."
+                )
+            }
+        )
+
+
+class AnnotationLabel(BaseOCModel):
+
+    label_type = django.db.models.CharField(
+        max_length=128,
+        blank=False,
+        null=False,
+        choices=LABEL_TYPES,
+        default=TOKEN_LABEL,
+    )
+
+    # If an analyzer requires a specific label, we want to track this so we can ensure we don't install copies of it
+    # over and over again.
+    analyzer = django.db.models.ForeignKey(
+        "analyzer.Analyzer",
+        null=True,
+        blank=True,
+        related_name="annotation_labels",
+        on_delete=django.db.models.SET_NULL,
+    )
+
+    # If this is meant to be a 'built-in' label and be used across corpuses without being explicitly added to a
+    # labelset, set this value to True
+    read_only = django.db.models.BooleanField(default=False)
+
+    color = django.db.models.CharField(
+        max_length=12, blank=False, null=False, default="#05313d"
+    )
+    description = django.db.models.TextField(null=False, default="")
+    icon = django.db.models.CharField(
+        max_length=128, blank=False, null=False, default="tags"
+    )
+    text = django.db.models.CharField(
+        max_length=128, blank=False, null=False, default="Text Label"
+    )
+
+    # Sharing
+    is_public = django.db.models.BooleanField(default=False)
+    creator = django.db.models.ForeignKey(
+        get_user_model(),
+        on_delete=django.db.models.CASCADE,
+        null=False,
+        default=1,
+    )
+
+    class Meta:
+        permissions = (
+            ("permission_annotationlabel", "permission Annotationlabel"),
+            ("publish_annotationlabel", "publish Annotationlabel"),
+            ("create_annotationlabel", "create Annotationlabel"),
+            ("read_annotationlabel", "read Annotationlabel"),
+            ("update_annotationlabel", "update Annotationlabel"),
+            ("remove_annotationlabel", "delete Annotationlabel"),
+            ("comment_annotationlabel", "comment Annotationlabel"),
+        )
+
+        indexes = [
+            django.db.models.Index(fields=["label_type"]),
+            django.db.models.Index(fields=["analyzer"]),
+            django.db.models.Index(fields=["text"]),
+            django.db.models.Index(fields=["creator"]),
+            django.db.models.Index(fields=["created"]),
+            django.db.models.Index(fields=["modified"]),
+        ]
+
+        constraints = [
+            django.db.models.UniqueConstraint(
+                fields=["analyzer", "text", "creator", "label_type"],
+                name="Only install one label of given name for each analyzer_id PER user (no duplicates)",
+            )
+        ]
+
+    # Override save to update modified on save
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """On save, update timestamps"""
+        if not self.pk:
+            self.created = timezone.now()
+        self.modified = timezone.now()
+
+        return super().save(*args, **kwargs)
+
+
+class Relationship(BaseOCModel, HasEmbeddingMixin):
+    """A directed relationship between annotations.
+
+    Inherits ``HasEmbeddingMixin`` so the materialised ``OC_SUBTREE_GROUP``
+    rows can be embedded and searched directly (issue #1645). The mixin
+    routes ``add_embedding(...)`` through ``Embedding.objects.store_embedding``
+    keyed on ``relationship_id=self.pk``.
+    """
+
+    objects = RelationshipManager()  # type: ignore[misc]
+
+    def get_embedding_reference_kwargs(self) -> dict[str, Any]:
+        """Wire the polymorphic ``Embedding.relationship`` FK to this row."""
+        return {"relationship_id": self.pk}
+
+    relationship_label = django.db.models.ForeignKey(
+        "AnnotationLabel",
+        null=True,
+        on_delete=django.db.models.CASCADE,
+        related_name="relationships",
+    )
+    corpus = django.db.models.ForeignKey(
+        "corpuses.Corpus",
+        null=True,
+        on_delete=django.db.models.CASCADE,
+        related_name="relationships",
+    )
+    document = django.db.models.ForeignKey(
+        "documents.Document",
+        related_name="relationships",
+        null=True,  # Nullable for structural relationships in shared sets
+        blank=True,
+        on_delete=django.db.models.CASCADE,
+    )
+    # Link to shared structural annotation set (mutually exclusive with document)
+    structural_set = django.db.models.ForeignKey(
+        "annotations.StructuralAnnotationSet",
+        on_delete=django.db.models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="structural_relationships",
+        help_text="For structural relationships shared across documents",
+    )
+    source_annotations = django.db.models.ManyToManyField(
+        "annotations.Annotation",
+        related_name="source_node_in_relationships",
+        related_query_name="source_node_in_relationship",
+        blank=True,
+    )
+    target_annotations = django.db.models.ManyToManyField(
+        "annotations.Annotation",
+        related_name="target_node_in_relationships",
+        related_query_name="target_node_in_relationship",
+        blank=True,
+    )
+
+    # If relationshi was created by an analyzer as part of an analysis, we want to track
+    # this.
+    analyzer = django.db.models.ForeignKey(
+        "analyzer.Analyzer", on_delete=django.db.models.SET_NULL, null=True, blank=True
+    )
+
+    # If this annotation was created as part of an analysis... track that.
+    analysis = django.db.models.ForeignKey(
+        "analyzer.Analysis",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.CASCADE,
+        related_name="relationships",
+    )
+
+    # Privacy fields - if set, relationship is only visible to those with permission to the source
+    created_by_analysis = django.db.models.ForeignKey(
+        "analyzer.Analysis",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.SET_NULL,
+        related_name="created_relationships",
+        help_text="If set, this relationship is private to the analysis that created it",
+    )
+
+    created_by_extract = django.db.models.ForeignKey(
+        "extracts.Extract",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.SET_NULL,
+        related_name="created_relationships",
+        help_text="If set, this relationship is private to the extract that created it",
+    )
+
+    # Some relationships are structural and not corpus-specific
+    structural = django.db.models.BooleanField(default=False)
+
+    # Sharing
+    is_public = django.db.models.BooleanField(default=False)
+    creator = django.db.models.ForeignKey(
+        get_user_model(),
+        on_delete=django.db.models.CASCADE,
+        null=False,
+        default=1,
+    )
+
+    # Timing variables
+    created = django.db.models.DateTimeField(
+        "Creation Date and Time", default=timezone.now
+    )
+    modified = django.db.models.DateTimeField(default=timezone.now, blank=True)
+
+    class Meta:
+        permissions = (
+            ("permission_relationship", "permission relationship"),
+            ("create_relationship", "create relationship"),
+            ("read_relationship", "read relationship"),
+            ("update_relationship", "update relationship"),
+            ("remove_relationship", "delete relationship"),
+            ("comment_relationship", "comment relationship"),
+            ("publish_relationship", "publish relationship"),
+        )
+
+        indexes = [
+            django.db.models.Index(fields=["relationship_label"]),
+            django.db.models.Index(fields=["corpus"]),
+            django.db.models.Index(fields=["document"]),
+            django.db.models.Index(fields=["analyzer"]),
+            django.db.models.Index(fields=["analysis"]),
+            django.db.models.Index(fields=["created_by_analysis"]),
+            django.db.models.Index(fields=["created_by_extract"]),
+            django.db.models.Index(fields=["structural_set"]),
+            django.db.models.Index(fields=["creator"]),
+            django.db.models.Index(fields=["created"]),
+            django.db.models.Index(fields=["modified"]),
+        ]
+
+        constraints = [
+            # Ensure a relationship can't be created by both analysis AND extract
+            django.db.models.CheckConstraint(
+                condition=(
+                    django.db.models.Q(created_by_analysis__isnull=True)
+                    | django.db.models.Q(created_by_extract__isnull=True)
+                ),
+                name="relationship_created_by_only_one_source",
+                violation_error_message="A relationship cannot be created by both an analysis and an extract",
+            ),
+            # Ensure relationship has EITHER document OR structural_set (XOR)
+            django.db.models.CheckConstraint(
+                condition=(
+                    django.db.models.Q(
+                        document__isnull=False, structural_set__isnull=True
+                    )
+                    | django.db.models.Q(
+                        document__isnull=True, structural_set__isnull=False
+                    )
+                ),
+                name="relationship_has_single_parent",
+                violation_error_message=(
+                    "A relationship must belong to either a document or a "
+                    "structural set, not both or neither"
+                ),
+            ),
+            # Ensure relationships in a structural_set must have structural=True
+            # This enforces data integrity consistent with Annotation model
+            django.db.models.CheckConstraint(
+                condition=(
+                    django.db.models.Q(structural_set__isnull=True)
+                    | django.db.models.Q(structural=True)
+                ),
+                name="rel_structural_set_requires_structural_flag",
+                violation_error_message=(
+                    "Relationships in a structural_set must have structural=True"
+                ),
+            ),
+        ]
+
+    def clean(self) -> None:
+        """Validate relationship fields, including privacy field constraints."""
+        super().clean()
+
+        # Validate mutual exclusivity of created_by fields
+        if self.created_by_analysis and self.created_by_extract:
+            raise ValidationError(
+                {
+                    "created_by_analysis": "A relationship cannot be created by both an analysis and an extract.",
+                    "created_by_extract": "A relationship cannot be created by both an analysis and an extract.",
+                }
+            )
+
+        # Validate consistency between analysis and created_by_analysis fields
+        # If both are set, they MUST match (same pattern as Annotation)
+        if (
+            self.created_by_analysis
+            and self.analysis
+            and self.created_by_analysis != self.analysis
+        ):
+            raise ValidationError(
+                {
+                    "analysis": (
+                        f"The 'analysis' field must match 'created_by_analysis' when both are set. "
+                        f"Got analysis={self.analysis.id}, created_by_analysis={self.created_by_analysis.id}. "
+                        f"Valid combinations: (1) analysis=A, created_by_analysis=A for analysis mode, "
+                        f"(2) analysis=None, created_by_analysis=A for manual mode with privacy, "
+                        f"(3) analysis=None, created_by_analysis=None for public manual relationship."
+                    )
+                }
+            )
+
+        # Validate mutual exclusivity of document vs structural_set
+        has_document = self.document_id is not None
+        has_structural_set = getattr(self, "structural_set_id", None) is not None
+        if has_document and has_structural_set:
+            raise ValidationError(
+                {
+                    "document": "A relationship cannot belong to both a document and a structural set.",
+                    "structural_set": "A relationship cannot belong to both a document and a structural set.",
+                }
+            )
+        if not has_document and not has_structural_set:
+            raise ValidationError(
+                {
+                    "document": "A relationship must belong to either a document or a structural set.",
+                    "structural_set": "A relationship must belong to either a document or a structural set.",
+                }
+            )
+
+    # Override save to update modified on save
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """On save, update timestamps and validate constraints"""
+        # Always validate on save (consistent with Annotation model)
+        self.clean()
+
+        if not self.pk:
+            self.created = timezone.now()
+        self.modified = timezone.now()
+
+        return super().save(*args, **kwargs)
+
+
+class Embedding(BaseOCModel):
+    """
+    The Embedding model stores a single vector embedding (or multiple dimension-specific
+    embeddings) that references exactly one parent object, such as a Document, Annotation, Note,
+    Conversation, or ChatMessage.
+
+    By having foreign keys to each model, you can store embeddings in a single table
+    and link them back to whichever model they belong to.
+
+    Attributes:
+        document (Optional[Document]): A reference to an associated Document, if applicable.
+        annotation (Optional[Annotation]): A reference to an associated Annotation, if applicable.
+        note (Optional[Note]): A reference to an associated Note, if applicable.
+        conversation (Optional[Conversation]): A reference to an associated Conversation, if applicable.
+        message (Optional[ChatMessage]): A reference to an associated ChatMessage, if applicable.
+        embedder_path (str): A field storing the embedder or model path used to generate this embedding.
+        vector_384 (VectorField): A 384-dimensional embedding vector, if used.
+        vector_768 (VectorField): A 768-dimensional embedding vector, if used.
+        vector_1024 (VectorField): A 1024-dimensional embedding vector, if used.
+        vector_1536 (VectorField): A 1536-dimensional embedding vector, if used.
+        vector_3072 (VectorField): A 3072-dimensional embedding vector, if used.
+        vector_4096 (VectorField): A 4096-dimensional embedding vector, if used.
+        created (datetime): Timestamp when this embedding record was created.
+        modified (datetime): Timestamp when this embedding record was last updated.
+    """
+
+    objects = EmbeddingManager()  # type: ignore[misc]
+
+    # One of these will be non-null if the embedding belongs to that model.
+    document = django.db.models.ForeignKey(
+        "documents.Document",
+        related_name="embedding_set",
+        on_delete=django.db.models.CASCADE,
+        null=True,
+        blank=True,
+        help_text="References the Document that this embedding belongs to (if any).",
+    )
+    annotation = django.db.models.ForeignKey(
+        "annotations.Annotation",
+        related_name="embedding_set",
+        on_delete=django.db.models.CASCADE,
+        null=True,
+        blank=True,
+        help_text="References the Annotation that this embedding belongs to (if any).",
+    )
+    note = django.db.models.ForeignKey(
+        "annotations.Note",
+        related_name="embedding_set",
+        on_delete=django.db.models.CASCADE,
+        null=True,
+        blank=True,
+        help_text="References the Note that this embedding belongs to (if any).",
+    )
+    conversation = django.db.models.ForeignKey(
+        "conversations.Conversation",
+        related_name="embedding_set",
+        on_delete=django.db.models.CASCADE,
+        null=True,
+        blank=True,
+        help_text="References the Conversation that this embedding belongs to (if any).",
+    )
+    message = django.db.models.ForeignKey(
+        "conversations.ChatMessage",
+        related_name="embedding_set",
+        on_delete=django.db.models.CASCADE,
+        null=True,
+        blank=True,
+        help_text="References the ChatMessage that this embedding belongs to (if any).",
+    )
+    # Polymorphic parent #6: Relationship. Currently populated only for
+    # ``OC_SUBTREE_GROUP`` rows materialised by
+    # ``opencontractserver/utils/subtree_groups.py`` so semantic search can
+    # surface containing blocks as first-class hits (issue #1645). Other
+    # relationship types are not embedded today.
+    relationship = django.db.models.ForeignKey(
+        "annotations.Relationship",
+        related_name="embedding_set",
+        on_delete=django.db.models.CASCADE,
+        null=True,
+        blank=True,
+        help_text="References the Relationship this embedding belongs to (if any).",
+    )
+
+    # Required: NULL would silently bypass the partial unique constraints below.
+    embedder_path = django.db.models.CharField(
+        max_length=256,
+        help_text="Identifier for the embedding model or pipeline used (e.g. 'openai/text-embedding-ada-002').",
+    )
+
+    # Multiple dimension-specific embeddings
+    vector_384 = VectorField(dimensions=EMBEDDING_DIM_384, null=True, blank=True)
+    vector_768 = VectorField(dimensions=EMBEDDING_DIM_768, null=True, blank=True)
+    vector_1024 = VectorField(dimensions=EMBEDDING_DIM_1024, null=True, blank=True)
+    vector_1536 = VectorField(dimensions=EMBEDDING_DIM_1536, null=True, blank=True)
+    vector_2048 = VectorField(dimensions=EMBEDDING_DIM_2048, null=True, blank=True)
+    vector_3072 = VectorField(dimensions=EMBEDDING_DIM_3072, null=True, blank=True)
+    vector_4096 = VectorField(dimensions=EMBEDDING_DIM_4096, null=True, blank=True)
+
+    # Metadata
+    created = django.db.models.DateTimeField(default=timezone.now, blank=True)
+    modified = django.db.models.DateTimeField(default=timezone.now, blank=True)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """
+        Overridden save method:
+          - ensures modified timestamp is updated
+          - optionally you can validate that exactly one of (document, annotation, note) is set
+        """
+        self.modified = timezone.now()
+        super().save(*args, **kwargs)
+
+    def clean(self) -> None:
+        """
+        Optionally enforce that exactly one of document, annotation, note, conversation,
+        or message is non-null, if that is a business rule for your app.
+        """
+        super().clean()
+
+        parent_references = sum(
+            [
+                bool(self.document),
+                bool(self.annotation),
+                bool(self.note),
+                bool(self.conversation),
+                bool(self.message),
+                bool(self.relationship),
+            ]
+        )
+        if parent_references == 0:
+            raise ValueError(
+                "Embedding must reference at least one of Document, Annotation, "
+                "Note, Conversation, ChatMessage, or Relationship."
+            )
+        # If you want to enforce "exactly one," just check parent_references != 1
+
+    class Meta:
+        indexes = [
+            django.db.models.Index(fields=["embedder_path"]),
+            django.db.models.Index(fields=["created"]),
+            django.db.models.Index(fields=["modified"]),
+            # HNSW indexes for approximate nearest neighbor search.
+            # These turn O(n) sequential scans into O(log n) ANN lookups.
+            # pgvector HNSW has a hard 2000-dimension limit, so only dims ≤ 2000
+            # get HNSW indexes. Higher dims (2048, 3072, 4096) fall back to
+            # sequential scan — a future optimization could use halfvec casting
+            # (which raises the limit to 4000) at the cost of query-side changes.
+            HnswIndex(
+                name="emb_hnsw_384",
+                fields=["vector_384"],
+                m=HNSW_M,
+                ef_construction=HNSW_EF_CONSTRUCTION,
+                opclasses=["vector_cosine_ops"],
+            ),
+            HnswIndex(
+                name="emb_hnsw_768",
+                fields=["vector_768"],
+                m=HNSW_M,
+                ef_construction=HNSW_EF_CONSTRUCTION,
+                opclasses=["vector_cosine_ops"],
+            ),
+            HnswIndex(
+                name="emb_hnsw_1024",
+                fields=["vector_1024"],
+                m=HNSW_M,
+                ef_construction=HNSW_EF_CONSTRUCTION,
+                opclasses=["vector_cosine_ops"],
+            ),
+            HnswIndex(
+                name="emb_hnsw_1536",
+                fields=["vector_1536"],
+                m=HNSW_M,
+                ef_construction=HNSW_EF_CONSTRUCTION,
+                opclasses=["vector_cosine_ops"],
+            ),
+        ]
+        # Partial unique constraints to prevent duplicate embeddings per parent object
+        # Each parent type (document, annotation, etc.) can have only one embedding
+        # per embedder_path
+        constraints = [
+            django.db.models.UniqueConstraint(
+                fields=["embedder_path", "document"],
+                condition=django.db.models.Q(document__isnull=False),
+                name="unique_embedding_per_document_embedder",
+            ),
+            django.db.models.UniqueConstraint(
+                fields=["embedder_path", "annotation"],
+                condition=django.db.models.Q(annotation__isnull=False),
+                name="unique_embedding_per_annotation_embedder",
+            ),
+            django.db.models.UniqueConstraint(
+                fields=["embedder_path", "note"],
+                condition=django.db.models.Q(note__isnull=False),
+                name="unique_embedding_per_note_embedder",
+            ),
+            django.db.models.UniqueConstraint(
+                fields=["embedder_path", "conversation"],
+                condition=django.db.models.Q(conversation__isnull=False),
+                name="unique_embedding_per_conversation_embedder",
+            ),
+            django.db.models.UniqueConstraint(
+                fields=["embedder_path", "message"],
+                condition=django.db.models.Q(message__isnull=False),
+                name="unique_embedding_per_message_embedder",
+            ),
+            django.db.models.UniqueConstraint(
+                fields=["embedder_path", "relationship"],
+                condition=django.db.models.Q(relationship__isnull=False),
+                name="unique_embedding_per_relationship_embedder",
+            ),
+        ]
+        verbose_name = "Embedding"
+        verbose_name_plural = "Embeddings"
+
+    def __str__(self) -> str:
+        return f"Embedding (ID={self.pk}) [{self.embedder_path}]"
+
+
+class StructuralAnnotationSet(BaseOCModel):
+    """
+    Immutable set of structural annotations for a specific document content.
+    Multiple Document instances can reference the same set, avoiding duplication.
+
+    Structural annotations represent the inherent document structure (headers,
+    paragraphs, sections, etc.) created during parsing. They are:
+    - Immutable: Cannot be modified per-corpus
+    - Shared: All corpus-isolated documents with same content share them
+    - Content-bound: Tied to the document content hash, not document instances
+    """
+
+    # Unique identifier based on content
+    # Max length is 128 to accommodate corpus-isolated duplicates:
+    # Format: {sha256_hash}_{corpus_id} = 64 chars + 1 underscore + up to 20 digits
+    content_hash = django.db.models.CharField(
+        max_length=128,
+        unique=True,
+        db_index=True,
+        help_text="SHA-256 hash of the document content this set belongs to",
+    )
+
+    # Parser metadata
+    parser_name = django.db.models.CharField(
+        max_length=255, null=True, blank=True, help_text="Parser class used"
+    )
+    parser_version = django.db.models.CharField(
+        max_length=50, null=True, blank=True, help_text="Parser version"
+    )
+
+    # Document metadata
+    page_count = django.db.models.IntegerField(
+        null=True, blank=True, help_text="Number of pages in the document"
+    )
+    token_count = django.db.models.IntegerField(
+        null=True, blank=True, help_text="Total number of tokens extracted"
+    )
+
+    # PAWLS data for PDFs (shared across all documents with this content)
+    pawls_parse_file = django.db.models.FileField(
+        upload_to=functools.partial(calc_oc_file_path, sub_folder="pawls_layers_files"),
+        null=True,
+        blank=True,
+        max_length=1024,
+        help_text="PAWLS JSON parse data for this content",
+    )
+
+    # Text extract for text-based documents
+    txt_extract_file = django.db.models.FileField(
+        upload_to=functools.partial(calc_oc_file_path, sub_folder="txt_layers_files"),
+        null=True,
+        blank=True,
+        max_length=1024,
+        help_text="Plain text extraction for this content",
+    )
+
+    # Sharing - structural annotations are always public as they're inherent to content
+    is_public = django.db.models.BooleanField(default=True)
+    creator = django.db.models.ForeignKey(  # type: ignore[assignment]
+        get_user_model(),
+        on_delete=django.db.models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="User who first parsed this content",
+    )
+
+    class Meta:
+        indexes = [
+            django.db.models.Index(fields=["content_hash"]),
+            django.db.models.Index(fields=["parser_name"]),
+            django.db.models.Index(fields=["created"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"StructuralAnnotationSet({self.content_hash[:12]}...)"
+
+    @property
+    def annotation_count(self) -> int:
+        """Get the count of structural annotations in this set."""
+        return self.structural_annotations.count()
+
+    @property
+    def relationship_count(self) -> int:
+        """Get the count of structural relationships in this set."""
+        return self.structural_relationships.count()
+
+    def duplicate(self, corpus_id: int | None = None) -> StructuralAnnotationSet:
+        """
+        Create a copy of this set with all its annotations for corpus isolation.
+
+        Each corpus copy of a document gets its own StructuralAnnotationSet to enable
+        per-corpus embeddings (different corpuses may use different embedders with
+        incompatible vector dimensions).
+
+        Args:
+            corpus_id: Optional corpus ID to include in content_hash suffix
+
+        Returns:
+            New StructuralAnnotationSet with copied structural annotations
+        """
+        import uuid
+
+        # Always include UUID to ensure uniqueness, even when multiple documents
+        # share the same structural_annotation_set and are forked into the same corpus
+        unique_id = uuid.uuid4().hex[:8]
+        suffix = f"_{corpus_id}_{unique_id}" if corpus_id else f"_{unique_id}"
+
+        new_set = StructuralAnnotationSet.objects.create(
+            content_hash=f"{self.content_hash}{suffix}",
+            parser_name=self.parser_name,
+            parser_version=self.parser_version,
+            page_count=self.page_count,
+            token_count=self.token_count,
+            pawls_parse_file=self.pawls_parse_file,  # Same file reference is OK
+            txt_extract_file=self.txt_extract_file,  # Same file reference is OK
+            is_public=self.is_public,
+            creator=self.creator,
+        )
+
+        # Bulk copy structural annotations (without embeddings - will be generated fresh)
+        # Use select_related to avoid N+1 queries on annotation_label and creator
+        # Use only() to fetch just the fields we need for duplication
+        source_annotations = list(
+            self.structural_annotations.select_related(
+                "annotation_label", "creator"
+            ).only(
+                "page",
+                "raw_text",
+                "json",
+                "annotation_type",
+                "annotation_label",
+                "content_modalities",
+                "image_content_file",
+                "is_public",
+                "creator",
+            )
+        )
+
+        # compact_annotation_json is called explicitly because bulk_create()
+        # bypasses save(), which is where auto-compaction normally runs.
+        # The function is idempotent — already-compact v2 data is returned as-is.
+        new_annotations = [
+            Annotation(
+                structural_set=new_set,
+                page=a.page,
+                raw_text=a.raw_text,
+                json=compact_annotation_json(a.json) if a.json else a.json,
+                annotation_type=a.annotation_type,
+                annotation_label=a.annotation_label,
+                structural=True,
+                content_modalities=a.content_modalities,
+                is_public=a.is_public,
+                creator=a.creator,
+            )
+            for a in source_annotations
+        ]
+        created_annotations = Annotation.objects.bulk_create(new_annotations)
+
+        # Copy or extract image content for IMAGE modality annotations
+        # This ensures embedding tasks don't need to reload PAWLs
+        from opencontractserver.types.enums import ContentModality
+
+        pawls_data = None  # Lazy load only if needed
+        source_to_new = dict(zip(source_annotations, created_annotations))
+
+        for source_annot, new_annot in source_to_new.items():
+            modalities = source_annot.content_modalities or []
+            if ContentModality.IMAGE.value not in modalities:
+                continue
+
+            if source_annot.image_content_file:
+                # Fast path: copy file content from source
+                try:
+                    source_annot.image_content_file.open("rb")
+                    try:
+                        new_annot.image_content_file.save(
+                            f"annot_{new_annot.pk}_images.json",
+                            source_annot.image_content_file,
+                            save=True,
+                        )
+                    finally:
+                        source_annot.image_content_file.close()
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to copy image_content_file for annotation "
+                        f"{new_annot.pk}: {e}"
+                    )
+            else:
+                # Slow path: extract from PAWLs (load once)
+                if pawls_data is None and self.pawls_parse_file:
+                    import json as json_module
+
+                    try:
+                        from opencontractserver.utils.compact_pawls import (
+                            expand_pawls_pages,
+                        )
+
+                        self.pawls_parse_file.open("r")
+                        try:
+                            pawls_data = expand_pawls_pages(
+                                json_module.load(self.pawls_parse_file)
+                            )
+                        finally:
+                            self.pawls_parse_file.close()
+                    except Exception as e:
+                        logger.error(f"Failed to load PAWLs for image extraction: {e}")
+                        pawls_data = []  # Prevent repeated attempts
+
+                if pawls_data:
+                    from opencontractserver.utils.multimodal_embeddings import (
+                        extract_and_store_annotation_images,
+                    )
+
+                    extract_and_store_annotation_images(new_annot, pawls_data)
+
+        # Queue embedding tasks for corpus-isolated annotations
+        # bulk_create doesn't fire signals, so we must explicitly queue embeddings
+        if corpus_id and created_annotations:
+            from django.conf import settings
+            from django.db import transaction
+
+            from opencontractserver.corpuses.models import Corpus
+            from opencontractserver.tasks.embeddings_task import (
+                calculate_embedding_for_annotation_text,
+            )
+
+            try:
+                corpus = Corpus.objects.get(pk=corpus_id)
+                embedder_path = corpus.preferred_embedder or getattr(
+                    settings, "DEFAULT_EMBEDDER", None
+                )
+
+                if embedder_path:
+                    logger.info(
+                        f"Queuing embeddings for {len(created_annotations)} duplicated "
+                        f"annotations using embedder {embedder_path} (corpus {corpus_id})"
+                    )
+                    for annot in created_annotations:
+                        # Use embedder_path to bypass dual embedding strategy
+                        # and use only the corpus's preferred embedder
+                        transaction.on_commit(
+                            lambda a_id=annot.id: calculate_embedding_for_annotation_text.delay(  # type: ignore[misc]
+                                annotation_id=a_id, embedder_path=embedder_path
+                            )
+                        )
+            except Corpus.DoesNotExist:
+                logger.warning(
+                    f"Corpus {corpus_id} not found, skipping embeddings for "
+                    f"duplicated annotations"
+                )
+
+        return new_set
+
+
+class Annotation(BaseOCModel, HasEmbeddingMixin):
+    """
+    The Annotation model represents annotations within documents.
+    """
+
+    # Use the custom manager that combines permissioning and CTE capabilities
+    objects = AnnotationManager()  # type: ignore[misc]
+
+    page = django.db.models.IntegerField(default=1, blank=False)
+    raw_text = django.db.models.TextField(null=True, blank=True)
+    long_description = django.db.models.TextField(
+        null=True,
+        blank=True,
+        help_text="Optional markdown description for this annotation, "
+        "e.g. a section summary in a document index.",
+    )
+    search_vector = SearchVectorField(null=True)
+    json = NullableJSONField(default=jsonfield_default_value, null=False)
+
+    # New parent field for hierarchical relationships
+    parent = django.db.models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        related_name="children",
+        on_delete=django.db.models.CASCADE,
+    )
+
+    # This is kind of duplicative of the AnnotationLabel label_type, BUT,
+    # it makes more sense here. Slowly going to transition to this
+    annotation_type = django.db.models.CharField(
+        max_length=128,
+        blank=False,
+        null=False,
+        choices=LABEL_TYPES,
+        default=TOKEN_LABEL,
+    )
+
+    annotation_label = django.db.models.ForeignKey(
+        "annotations.AnnotationLabel", null=True, on_delete=django.db.models.CASCADE
+    )
+    document = django.db.models.ForeignKey(
+        "documents.Document",
+        null=True,  # Nullable for structural annotations in shared sets
+        blank=True,
+        on_delete=django.db.models.CASCADE,
+        related_name="doc_annotations",
+        related_query_name="doc_annotation",
+    )
+    corpus = django.db.models.ForeignKey(
+        "corpuses.Corpus",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.SET_NULL,
+        related_name="annotations",
+    )
+    # Link to shared structural annotation set (mutually exclusive with document)
+    structural_set = django.db.models.ForeignKey(
+        "annotations.StructuralAnnotationSet",
+        on_delete=django.db.models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="structural_annotations",
+        help_text="For structural annotations shared across documents",
+    )
+
+    # Vector for vector search - legacy field, will be deprecated
+    embedding = VectorField(dimensions=384, null=True, blank=True)
+
+    # New relationship to the Embedding model
+    embeddings = django.db.models.ForeignKey(
+        "annotations.Embedding",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.SET_NULL,
+        related_name="annotations",
+    )
+
+    # If this annotation was created as part of an analysis... track that.
+    analysis = django.db.models.ForeignKey(
+        "analyzer.Analysis",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.CASCADE,
+        related_name="annotations",
+    )
+
+    # Privacy fields - if set, annotation is only visible to those with permission to the source
+    created_by_analysis = django.db.models.ForeignKey(
+        "analyzer.Analysis",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.SET_NULL,
+        related_name="created_annotations",
+        help_text="If set, this annotation is private to the analysis that created it",
+    )
+
+    created_by_extract = django.db.models.ForeignKey(
+        "extracts.Extract",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.SET_NULL,
+        related_name="created_annotations",
+        help_text="If set, this annotation is private to the extract that created it",
+    )
+
+    # If this annotation was created by a corpus action agent
+    corpus_action = django.db.models.ForeignKey(
+        "corpuses.CorpusAction",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.SET_NULL,
+        related_name="created_annotations",
+        help_text="If set, this annotation was created by a corpus action agent",
+    )
+
+    # Mark structural / layout annotations explicitly.
+    structural = django.db.models.BooleanField(default=False)
+
+    # Target URL for clickable-link annotations (used with the OC_URL label).
+    # Frontend opens this URL when the annotation is clicked. Uses ``CharField``
+    # — NOT ``URLField`` — because we accept site-relative paths (``/corpus/...``)
+    # in addition to absolute URLs, and ``URLField``'s built-in ``URLValidator``
+    # rejects those at ``clean_fields()`` time before ``validate_link_url()``
+    # gets a chance to run. The full allow-list (http(s)://, /…) is enforced
+    # by ``validate_link_url`` in ``clean()`` and ``save()``.
+    link_url = django.db.models.CharField(
+        max_length=2048,
+        null=True,
+        blank=True,
+        help_text=(
+            "Target URL opened when the annotation is clicked. "
+            "Only meaningful for annotations labelled OC_URL."
+        ),
+    )
+
+    # Structured metadata sidecar — distinct from the positional ``json`` field
+    # (which stores token bounds / span offsets). ``data`` holds label-specific
+    # state that downstream consumers query directly. First consumer: the
+    # geocoding pipeline (#1819) stamps ``{canonical_name, lat, lng,
+    # admin_codes, geocoded}`` here on OC_COUNTRY / OC_STATE / OC_CITY rows so
+    # the map-aggregation service (#1820 / #1821) can group pins without
+    # rerunning the geocoder. Future label conventions can reuse the column
+    # rather than each one minting another sparsely-populated typed field.
+    data = django.db.models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Structured metadata sidecar for label-specific state "
+            "(e.g. geocoded place coordinates for OC_COUNTRY/OC_STATE/OC_CITY)."
+        ),
+    )
+
+    # True only for annotations created by the extraction-grounding pipeline
+    # (``opencontractserver/utils/extraction_grounding.py``). Backs the
+    # partial UniqueConstraints below — the constraints scope to this flag
+    # so legitimate non-grounding flows that happen to produce the same
+    # ``(document, corpus, label, page, raw_text, creator)`` tuple (e.g.
+    # multi-occurrence exact-string annotation tools, hierarchical
+    # annotation trees) are not blocked.
+    is_grounding_source = django.db.models.BooleanField(default=False)
+
+    # Content modalities present in this annotation (TEXT, IMAGE, etc.)
+    content_modalities = ArrayField(
+        django.db.models.CharField(max_length=20),
+        default=list,
+        blank=True,
+        help_text="Content modalities present in this annotation: TEXT, IMAGE, etc.",
+    )
+
+    # Pre-extracted image content for IMAGE modality annotations
+    # Stores base64 image data to avoid re-loading PAWLs at embedding time
+    image_content_file = django.db.models.FileField(
+        upload_to=functools.partial(calc_oc_file_path, sub_folder="annotation_images"),
+        blank=True,
+        null=True,
+        help_text="JSON file containing extracted image data for IMAGE modality annotations",
+    )
+
+    # Sharing
+    is_public = django.db.models.BooleanField(default=False)
+    creator = django.db.models.ForeignKey(
+        get_user_model(),
+        on_delete=django.db.models.CASCADE,
+        null=False,
+        default=1,
+    )
+
+    # Timing variables
+    created = django.db.models.DateTimeField(
+        "Creation Date and Time", default=timezone.now
+    )
+    modified = django.db.models.DateTimeField(default=timezone.now, blank=True)
+
+    def get_embedding_reference_kwargs(self) -> dict[str, Any]:
+        return {"annotation_id": self.pk}
+
+    # ---------------------------------------------------------------------
+    # Convenience helpers
+    # ---------------------------------------------------------------------
+
+    @property
+    def typed_json(self) -> MultipageAnnotationJson | SpanAnnotationJson:
+        """Return `self.json` with a precise static type.
+
+        This helper exists purely for IDE / static-analysis benefit. It performs
+        *no* runtime transformation and therefore has **zero** performance
+        impact in production.
+        """
+
+        return cast("Union[MultipageAnnotationJson, SpanAnnotationJson]", self.json)
+
+    # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
+
+    def clean(self) -> None:  # noqa: C901  (complexity – kept minimal)
+        """Lightweight schema validation for the `json` field.
+
+        For performance reasons the check runs only when either
+
+        * the Django setting ``VALIDATE_ANNOTATION_JSON`` is truthy, **or**
+        * ``settings.DEBUG`` is ``True``.
+
+        The validation is intentionally shallow (type/shape only) to avoid
+        expensive deep walks for large payloads.
+        """
+
+        super().clean()
+
+        # Validate link_url scheme ALWAYS — link_url is reflected in a
+        # click handler, so unsafe schemes (e.g. ``javascript:``) must be
+        # rejected before persistence even when ``VALIDATE_ANNOTATION_JSON``
+        # is disabled. Run before the early-return below so the check
+        # cannot be bypassed by toggling that flag in production.
+        # Strip surrounding whitespace so a value submitted with leading
+        # spaces (e.g. via a direct API call that didn't pre-trim) is
+        # stored canonically. Whitespace-only input collapses to None so
+        # the column stays NULL rather than holding an empty string.
+        if self.link_url is not None:
+            self.link_url = self.link_url.strip() or None
+            if self.link_url:
+                validate_link_url(self.link_url)
+
+        from django.conf import settings  # local to avoid global import cost
+
+        should_validate: bool = bool(
+            getattr(settings, "VALIDATE_ANNOTATION_JSON", settings.DEBUG)
+        )
+
+        if not should_validate:
+            return
+
+        if self.annotation_type == TOKEN_LABEL:
+            if not isinstance(self.json, dict):
+                raise ValueError(
+                    "TOKEN_LABEL annotations must store MultipageAnnotationJson (dict)."
+                )
+            if is_compact_format(self.json):
+                # v2 compact format: {"v": 2, "p": {"0": {"b": [...], "t": "..."}}}
+                pages = self.json.get("p", {})
+                for page_key, page_obj in pages.items():
+                    if not isinstance(page_obj, dict):
+                        raise ValueError("v2 page entries must be dicts.")
+                    if "b" not in page_obj or "t" not in page_obj:
+                        raise ValueError(
+                            "v2 page entries must contain 'b' (bounds) and 't' (tokens)."
+                        )
+            elif not is_span_format(self.json):
+                # v1 legacy or free-form — shallow type/shape check.
+                # Auto-compaction in save() handles normalization.
+                for page, page_obj in self.json.items():
+                    if not isinstance(page, (int, str)):
+                        raise ValueError("Page keys must be int-convertible.")
+
+        elif self.annotation_type == SPAN_LABEL:
+            if not isinstance(self.json, dict):
+                raise ValueError("SPAN_LABEL annotations must store a dict.")
+            # Only enforce span schema when the JSON has span-like keys.
+            if "start" in self.json or "end" in self.json:
+                if not (
+                    isinstance(self.json.get("start"), int)
+                    and isinstance(self.json.get("end"), int)
+                    and isinstance(self.json.get("text", ""), str)
+                ):
+                    raise ValueError(
+                        "SPAN_LABEL annotations with 'start'/'end' keys must have"
+                        " integer values and an optional 'text' string."
+                    )
+
+        # Other annotation types are free-form – no validation.
+
+        # Validate mutual exclusivity of created_by fields
+        if self.created_by_analysis and self.created_by_extract:
+            raise ValidationError(
+                {
+                    "created_by_analysis": "An annotation cannot be created by both an analysis and an extract.",
+                    "created_by_extract": "An annotation cannot be created by both an analysis and an extract.",
+                }
+            )
+
+        # Validate consistency between analysis and created_by_analysis fields
+        # If both are set, they MUST match (Option 1: Enforce Consistency)
+        # If only created_by_analysis is set, analysis can be None (for manual mode visibility)
+        # If only analysis is set without created_by_analysis, it's a public analysis annotation
+        if (
+            self.created_by_analysis
+            and self.analysis
+            and self.created_by_analysis != self.analysis
+        ):
+            raise ValidationError(
+                {
+                    "analysis": (
+                        f"The 'analysis' field must match 'created_by_analysis' when both are set. "
+                        f"Got analysis={self.analysis.id}, created_by_analysis={self.created_by_analysis.id}. "
+                        f"Valid combinations: (1) analysis=A, created_by_analysis=A for analysis mode, "
+                        f"(2) analysis=None, created_by_analysis=A for manual mode with privacy, "
+                        f"(3) analysis=None, created_by_analysis=None for public manual annotation."
+                    )
+                }
+            )
+
+        # Validate mutual exclusivity of document vs structural_set
+        has_document = self.document_id is not None
+        has_structural_set = getattr(self, "structural_set_id", None) is not None
+        if has_document and has_structural_set:
+            raise ValidationError(
+                {
+                    "document": "An annotation cannot belong to both a document and a structural set.",
+                    "structural_set": "An annotation cannot belong to both a document and a structural set.",
+                }
+            )
+        if not has_document and not has_structural_set:
+            raise ValidationError(
+                {
+                    "document": "An annotation must belong to either a document or a structural set.",
+                    "structural_set": "An annotation must belong to either a document or a structural set.",
+                }
+            )
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Override save to optionally validate `json` integrity and
+        auto-compact the annotation JSON to v2 format.
+
+        *No additional queries* are executed; the validation and compaction
+        inspect the in-memory `.json` payload only, therefore the cost is
+        negligible.
+        """
+
+        # Re-use the same flag used in `clean`.
+        from django.conf import settings
+
+        if getattr(settings, "VALIDATE_ANNOTATION_JSON", settings.DEBUG):
+            # Ensure that `clean()` is executed even if external callers
+            # forget. ``clean()`` already validates ``link_url`` ALWAYS
+            # (before its early-return), so a separate call here would
+            # be redundant.
+            self.clean()
+        elif self.link_url is not None:
+            # ``clean()`` was skipped above, but link_url must still be
+            # validated — it is reflected in a click handler so unsafe
+            # schemes like ``javascript:`` must never reach persistence.
+            # Mirror the whitespace-stripping ``clean()`` performs so the
+            # column stays canonical regardless of which path persisted.
+            # Whitespace-only collapses to None.
+            self.link_url = self.link_url.strip() or None
+            if self.link_url:
+                validate_link_url(self.link_url)
+
+        # Auto-compact annotation JSON to v2 format on save (lazy migration).
+        if (
+            self.annotation_type == TOKEN_LABEL
+            and isinstance(self.json, dict)
+            and self.json
+        ):
+            if not is_compact_format(self.json) and not is_span_format(self.json):
+                try:
+                    self.json = compact_annotation_json(self.json)
+                except Exception:
+                    logger.exception(
+                        "Failed to compact annotation JSON for pk=%s; storing as-is",
+                        self.pk,
+                    )
+
+        # Maintain timestamp consistency
+        if not self.pk:
+            self.created = timezone.now()
+        self.modified = timezone.now()
+
+        return super().save(*args, **kwargs)
+
+    class Meta:
+        permissions = (
+            ("permission_annotation", "permission annotation"),
+            ("create_annotation", "create annotation"),
+            ("read_annotation", "read annotation"),
+            ("update_annotation", "update annotation"),
+            ("remove_annotation", "delete annotation"),
+            ("comment_annotation", "comment annotation"),
+            ("publish_annotation", "publish relationship"),
+        )
+
+        indexes = [
+            django.db.models.Index(fields=["page"]),
+            django.db.models.Index(fields=["annotation_label"]),
+            django.db.models.Index(fields=["document"]),
+            django.db.models.Index(fields=["document", "creator"]),
+            django.db.models.Index(fields=["corpus"]),
+            django.db.models.Index(fields=["structural", "corpus"]),
+            django.db.models.Index(fields=["corpus", "creator"]),
+            django.db.models.Index(fields=["document", "corpus"]),
+            django.db.models.Index(fields=["document", "corpus", "creator"]),
+            django.db.models.Index(fields=["analysis"]),
+            django.db.models.Index(fields=["created_by_analysis"]),
+            django.db.models.Index(fields=["created_by_extract"]),
+            django.db.models.Index(fields=["corpus_action"]),
+            django.db.models.Index(fields=["structural_set"]),
+            django.db.models.Index(fields=["creator"]),
+            django.db.models.Index(fields=["created"]),
+            django.db.models.Index(fields=["modified"]),
+            # Composite backing the structural-filtered "Browse annotations"
+            # page (``structural=<bool>`` + ``ORDER BY -modified``) used by the
+            # anonymous / Discover browse and the ``structural`` connection
+            # filter. Usable only now that ``visible_to_user`` is de-joined and
+            # no longer ends in ``.distinct()`` (issue #1906). The unfiltered
+            # ``-modified`` page keeps using the single-column ``modified``
+            # index above.
+            django.db.models.Index(
+                fields=["structural", "modified"],
+                name="annot_structural_modified_idx",
+            ),
+            GinIndex(
+                fields=["search_vector"],
+                name="annotation_search_vector_gin",
+            ),
+            # pg_trgm GIN index so case-insensitive substring search on
+            # raw_text (icontains / ILIKE) stays index-backed instead of
+            # degrading to a sequential scan as the table grows. Used by
+            # the @-mention / discover annotation search.
+            GinIndex(
+                fields=["raw_text"],
+                name="annotation_raw_text_trgm_gin",
+                opclasses=["gin_trgm_ops"],
+            ),
+        ]
+
+        constraints = [
+            # Ensure an annotation can't be created by both analysis AND extract
+            django.db.models.CheckConstraint(
+                condition=(
+                    django.db.models.Q(created_by_analysis__isnull=True)
+                    | django.db.models.Q(created_by_extract__isnull=True)
+                ),
+                name="annotation_created_by_only_one_source",
+                violation_error_message="An annotation cannot be created by both an analysis and an extract",
+            ),
+            # Ensure annotation has EITHER document OR structural_set (XOR)
+            django.db.models.CheckConstraint(
+                condition=(
+                    django.db.models.Q(
+                        document__isnull=False, structural_set__isnull=True
+                    )
+                    | django.db.models.Q(
+                        document__isnull=True, structural_set__isnull=False
+                    )
+                ),
+                name="annotation_has_single_parent",
+                violation_error_message=(
+                    "An annotation must belong to either a document or a "
+                    "structural set, not both or neither"
+                ),
+            ),
+            # Ensure annotations in a structural_set must have structural=True
+            # This enforces data integrity for the assumption in the annotation service
+            django.db.models.CheckConstraint(
+                condition=(
+                    django.db.models.Q(structural_set__isnull=True)
+                    | django.db.models.Q(structural=True)
+                ),
+                name="structural_set_requires_structural_flag",
+                violation_error_message=(
+                    "Annotations in a structural_set must have structural=True"
+                ),
+            ),
+            # Backs the application-level ``get_or_create`` in the
+            # extraction grounding pipeline (see
+            # ``opencontractserver/utils/extraction_grounding.py``). Without
+            # this, two concurrent Celery workers retrying the same datacell
+            # could both miss on the SELECT and both succeed on the CREATE,
+            # producing duplicate source annotations. ``creator`` is in the
+            # key so two distinct users manually creating identical rows
+            # are not blocked. Scoped to ``is_grounding_source=True`` so
+            # legitimate non-grounding flows that happen to produce the
+            # same key tuple (e.g. ``add_annotations_from_exact_strings``
+            # finding multiple occurrences of the same word on a page,
+            # hierarchical annotation trees) are not blocked.
+            django.db.models.UniqueConstraint(
+                fields=[
+                    "document",
+                    "corpus",
+                    "annotation_label",
+                    "page",
+                    "raw_text",
+                    "creator",
+                ],
+                condition=django.db.models.Q(
+                    structural=False,
+                    annotation_type=TOKEN_LABEL,
+                    is_grounding_source=True,
+                ),
+                name="annotation_unique_token_label_grounding_key",
+            ),
+            # Span counterpart: ``json={"start", "end"}`` is the identity
+            # of a span annotation, so it replaces ``page`` in the key.
+            # JSONB equality on PostgreSQL is structural (key-order
+            # independent), which matches the application-level lookup;
+            # SQLite stores JSON as text and would compare lexically.
+            django.db.models.UniqueConstraint(
+                fields=[
+                    "document",
+                    "corpus",
+                    "annotation_label",
+                    "raw_text",
+                    "json",
+                    "creator",
+                ],
+                condition=django.db.models.Q(
+                    structural=False,
+                    annotation_type=SPAN_LABEL,
+                    is_grounding_source=True,
+                ),
+                name="annotation_unique_span_label_grounding_key",
+            ),
+        ]
+
+
+# Model for Django Guardian permissions.
+class AnnotationUserObjectPermission(UserObjectPermissionBase):
+    content_object = django.db.models.ForeignKey(
+        "Annotation", on_delete=django.db.models.CASCADE
+    )
+    # enabled = False
+
+
+# Model for Django Guardian permissions.
+class AnnotationGroupObjectPermission(GroupObjectPermissionBase):
+    content_object = django.db.models.ForeignKey(
+        "Annotation", on_delete=django.db.models.CASCADE
+    )
+    # enabled = False
+
+
+def calculate_labelset_icon_path(instance: LabelSet, filename: str) -> str:
+    return calc_oc_file_path(
+        instance, filename, f"user_{instance.creator.id}/labelsets/icons/{uuid.uuid4()}"
+    )
+
+
+class LabelSet(BaseOCModel):
+    """
+    Label set object which stores a collection of:
+     1) text labels,
+     2) text label relationship labels,
+     3) document labels and
+     4) document relationship labels
+    """
+
+    # Basic metadata:
+    title = django.db.models.CharField(max_length=1024, db_index=True)
+    description = django.db.models.TextField(default="", blank=False)
+    icon = django.db.models.FileField(
+        blank=True, upload_to=calculate_labelset_icon_path
+    )
+
+    # For relational test...
+    annotation_labels = django.db.models.ManyToManyField(
+        AnnotationLabel,
+        blank=True,
+        related_name="included_in_labelsets",
+        related_query_name="included_in_labelset",
+    )
+
+    # If this is created by an analyzer, let's link to it
+    analyzer = django.db.models.ForeignKey(
+        "analyzer.Analyzer", on_delete=django.db.models.SET_NULL, null=True, blank=True
+    )
+
+    # Marks the install-wide default labelset. Pre-selected in the new-corpus
+    # modal and assigned automatically when a corpus is created without one.
+    # A partial unique constraint guarantees at most one default exists.
+    is_default = django.db.models.BooleanField(default=False, db_index=True)
+
+    class Meta:
+        permissions = (
+            ("permission_labelset", "Can permission labelset"),
+            ("publish_labelset", "Can publish labelset"),
+            ("create_labelset", "Can create labelset"),
+            ("read_labelset", "Can read labelset"),
+            ("update_labelset", "Can update labelset"),
+            ("remove_labelset", "Can delete labelset"),
+            ("comment_labelset", "Can comment labelset"),
+        )
+
+        indexes = [
+            django.db.models.Index(fields=["title"]),
+            django.db.models.Index(fields=["analyzer"]),
+            django.db.models.Index(fields=["creator"]),
+            django.db.models.Index(fields=["created"]),
+            django.db.models.Index(fields=["modified"]),
+        ]
+
+        constraints = [
+            django.db.models.UniqueConstraint(
+                fields=["analyzer", "title"],
+                name="Only install one labelset of given title for each analyzer (no duplicates)",
+            ),
+            django.db.models.UniqueConstraint(
+                fields=["is_default"],
+                condition=django.db.models.Q(is_default=True),
+                name="only_one_default_labelset",
+            ),
+        ]
+
+
+# Model for Django Guardian permissions...
+class LabelSetUserObjectPermission(UserObjectPermissionBase):
+    content_object = django.db.models.ForeignKey(
+        "LabelSet", on_delete=django.db.models.CASCADE
+    )
+    # enabled = False
+
+
+# Model for Django Guardian permissions...
+class LabelSetGroupObjectPermission(GroupObjectPermissionBase):
+    content_object = django.db.models.ForeignKey(
+        "LabelSet", on_delete=django.db.models.CASCADE
+    )
+    # enabled = False
+
+
+class Note(BaseOCModel, HasEmbeddingMixin):
+    """
+    Notes model for attaching hierarchical comments/notes to documents.
+    Uses django_cte for hierarchical relationships.
+    """
+
+    objects = NoteManager()  # type: ignore[misc]
+
+    # Content
+    title = django.db.models.CharField(max_length=1024, db_index=True)
+    content = django.db.models.TextField(default="", blank=True)
+
+    # Full-text search vector, auto-populated from title + content by a DB
+    # trigger (see migration 0076). Mirrors Annotation.search_vector so Note
+    # discovery search gets stemming + ranking instead of LIKE-only matching.
+    search_vector = SearchVectorField(null=True)
+
+    # Vector for vector search - legacy field, will be deprecated
+    embedding = VectorField(dimensions=384, null=True, blank=True)
+
+    # New relationship to the Embedding model
+    embeddings = django.db.models.ForeignKey(
+        "annotations.Embedding",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.SET_NULL,
+        related_name="notes",
+    )
+
+    # Hierarchical relationship
+    parent = django.db.models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        related_name="children",
+        on_delete=django.db.models.CASCADE,
+    )
+
+    corpus = django.db.models.ForeignKey(
+        "corpuses.Corpus",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.SET_NULL,
+        related_name="notes",
+    )
+
+    # Document reference
+    document = django.db.models.ForeignKey(
+        "documents.Document",
+        null=False,
+        on_delete=django.db.models.CASCADE,
+        related_name="notes",
+    )
+
+    # Optional reference to specific annotation
+    annotation = django.db.models.ForeignKey(
+        "annotations.Annotation",
+        null=True,
+        blank=True,
+        on_delete=django.db.models.SET_NULL,
+        related_name="notes",
+    )
+
+    # Sharing
+    is_public = django.db.models.BooleanField(default=False)
+    creator = django.db.models.ForeignKey(
+        get_user_model(),
+        on_delete=django.db.models.CASCADE,
+        null=False,
+    )
+
+    # Timing variables
+    created = django.db.models.DateTimeField(default=timezone.now)
+    modified = django.db.models.DateTimeField(default=timezone.now, blank=True)
+
+    REVISION_SNAPSHOT_INTERVAL = (
+        10  # store full snapshot every N revisions for fast reconstruction
+    )
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Override save to automatically create a NoteRevision when `content` changes.
+        Set `skip_revision=True` in kwargs to bypass automatic revision creation
+        (used internally by `version_up`).
+        """
+        skip_revision: bool = kwargs.pop("skip_revision", False)
+        revision_author = kwargs.pop("revision_author", None)
+
+        # Determine whether this is a create vs update
+        is_new = self.pk is None
+
+        # Fetch original content for diffing (only for existing instances and when we need revision)
+        original_content: str = ""
+        if not is_new and not self._state.adding and not skip_revision:
+            original_content = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values_list("content", flat=True)
+                .first()
+                or ""
+            )
+
+        # Update timestamps
+        if is_new:
+            self.created = timezone.now()
+        self.modified = timezone.now()
+
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+
+            # Auto-create a NoteRevision unless explicitly skipped
+            if not skip_revision and (
+                is_new or original_content != (self.content or "")
+            ):
+                from opencontractserver.annotations.models import (  # local import to avoid cycles
+                    NoteRevision,
+                )
+
+                latest_rev = (
+                    NoteRevision.objects.filter(note_id=self.pk)
+                    .order_by("-version")
+                    .first()
+                )
+                next_version = 1 if latest_rev is None else latest_rev.version + 1
+
+                diff_text = "\n".join(
+                    difflib.unified_diff(
+                        original_content.splitlines(),
+                        (self.content or "").splitlines(),
+                        lineterm="",
+                    )
+                )
+
+                should_snapshot = (
+                    next_version % self.REVISION_SNAPSHOT_INTERVAL == 0 or is_new
+                )
+                snapshot_text = self.content if should_snapshot else None
+
+                NoteRevision.objects.create(
+                    note_id=self.pk,
+                    author=revision_author or self.creator,
+                    version=next_version,
+                    diff=diff_text,
+                    snapshot=snapshot_text,
+                    checksum_base=hashlib.sha256(original_content.encode()).hexdigest(),
+                    checksum_full=hashlib.sha256(
+                        (self.content or "").encode()
+                    ).hexdigest(),
+                )
+
+    def version_up(
+        self,
+        *,
+        new_content: str,
+        author: AbstractBaseUser | int,
+    ) -> NoteRevision | None:
+        """Utility to bump the note to a new version.
+
+        Args:
+            new_content (str): The full markdown content of the new version.
+            author (User | int): User object or id responsible for the change.
+
+        Returns:
+            NoteRevision: the created revision object (or `None` if no changes).
+        """
+        # Resolve author to User instance if an id is passed
+        author_obj: AbstractBaseUser
+        if isinstance(author, int):
+            author_obj = get_user_model().objects.get(pk=author)
+        else:
+            author_obj = author
+
+        # Short-circuit if content has not changed
+        if (self.content or "") == (new_content or ""):
+            return None
+
+        # Compute diff & version within transaction
+        with transaction.atomic():
+            original_content = self.content or ""
+
+            # Update note fields and persist without auto-revision (we will create it manually)
+            self.content = new_content
+            self.modified = timezone.now()
+            self.save(skip_revision=True)  # bypass auto revision to avoid duplication
+
+            # Determine next version
+            from opencontractserver.annotations.models import (  # avoid circular import
+                NoteRevision,
+            )
+
+            latest_rev = (
+                NoteRevision.objects.filter(note_id=self.pk)
+                .order_by("-version")
+                .first()
+            )
+            next_version = 1 if latest_rev is None else latest_rev.version + 1
+
+            diff_text = "\n".join(
+                difflib.unified_diff(
+                    original_content.splitlines(),
+                    new_content.splitlines(),
+                    lineterm="",
+                )
+            )
+
+            should_snapshot = next_version % self.REVISION_SNAPSHOT_INTERVAL == 0
+            snapshot_text = new_content if should_snapshot else None
+
+            revision = NoteRevision.objects.create(
+                note=self,
+                # django-stubs: create() infers AUTH_USER_MODEL exactly,
+                # not AbstractBaseUser, so passing the abstract type triggers
+                # a misc error even though it is a runtime-correct subtype.
+                author=author_obj,  # type: ignore[misc]
+                version=next_version,
+                diff=diff_text,
+                snapshot=snapshot_text,
+                checksum_base=hashlib.sha256(original_content.encode()).hexdigest(),
+                checksum_full=hashlib.sha256(new_content.encode()).hexdigest(),
+            )
+
+        return revision
+
+    def get_embedding_reference_kwargs(self) -> dict[str, Any]:
+        return {"note_id": self.pk}
+
+    class Meta:
+        permissions = (
+            ("permission_note", "permission note"),
+            ("publish_note", "publish note"),
+            ("create_note", "create note"),
+            ("read_note", "read note"),
+            ("update_note", "update note"),
+            ("remove_note", "delete note"),
+            ("comment_note", "comment note"),
+        )
+        indexes = [
+            django.db.models.Index(fields=["title"]),
+            django.db.models.Index(fields=["document"]),
+            django.db.models.Index(fields=["annotation"]),
+            django.db.models.Index(fields=["creator"]),
+            django.db.models.Index(fields=["created"]),
+            django.db.models.Index(fields=["modified"]),
+            django.db.models.Index(fields=["parent"]),
+            django.db.models.Index(fields=["corpus"]),
+            GinIndex(
+                fields=["search_vector"],
+                name="note_search_vector_gin",
+            ),
+        ]
+        ordering = ("created",)
+
+
+# Model for Django Guardian permissions
+class NoteUserObjectPermission(UserObjectPermissionBase):
+    content_object = django.db.models.ForeignKey(
+        "Note", on_delete=django.db.models.CASCADE
+    )
+
+
+# Model for Django Guardian permissions
+class NoteGroupObjectPermission(GroupObjectPermissionBase):
+    content_object = django.db.models.ForeignKey(
+        "Note", on_delete=django.db.models.CASCADE
+    )
+
+
+class NoteRevision(django.db.models.Model):
+    """Append-only log of changes to a `Note`.
+
+    Stores a compact unified diff against the previous version plus an optional full
+    snapshot every `Note.REVISION_SNAPSHOT_INTERVAL` versions so that historical
+    materialisation is `O(N)` where `N` ≤ interval.
+    """
+
+    note = django.db.models.ForeignKey(
+        "annotations.Note",
+        on_delete=django.db.models.CASCADE,
+        related_name="revisions",
+    )
+    author = django.db.models.ForeignKey(
+        get_user_model(),
+        on_delete=django.db.models.SET_NULL,
+        null=True,
+        related_name="note_revisions",
+    )
+
+    # Monotonic per-note version starting at 1
+    version = django.db.models.PositiveIntegerField()
+
+    # Unified diff text (line-oriented, UTF-8)
+    diff = django.db.models.TextField(blank=True)
+
+    # Optional full snapshot of the note content
+    snapshot = django.db.models.TextField(null=True, blank=True)
+
+    # SHA-256 checksums for data integrity / fast mismatch detection
+    checksum_base = django.db.models.CharField(max_length=64, blank=True)
+    checksum_full = django.db.models.CharField(max_length=64, blank=True)
+
+    created = django.db.models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        indexes = [
+            django.db.models.Index(fields=["note"]),
+            django.db.models.Index(fields=["author"]),
+            django.db.models.Index(fields=["created"]),
+        ]
+        unique_together = ("note", "version")
+        ordering = ("note_id", "version")
+
+    def __str__(self) -> str:
+        return f"NoteRevision(note_id={self.note_id}, v={self.version})"

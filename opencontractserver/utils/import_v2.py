@@ -1,0 +1,776 @@
+"""
+Import utilities for V2 corpus import format.
+
+Handles import of new features added since original import design:
+- Structural annotation sets (with deduplication)
+- Corpus folders (reconstruct hierarchy)
+- Agent configurations
+- Markdown descriptions with revisions
+- Conversations and messages (optional)
+
+Note: DocumentPath creation is handled by corpus.add_document() and
+corpus-level relationship import is handled by _import_v2_relationships
+in import_tasks_v2.py.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
+from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+from django.db import transaction
+from django.db.models import ProtectedError
+
+if TYPE_CHECKING:
+    from opencontractserver.documents.models import Document
+    from opencontractserver.users.models import User as UserModel
+
+from opencontractserver.annotations.models import (
+    RELATIONSHIP_LABEL,
+    SPAN_LABEL,
+    TOKEN_LABEL,
+    Annotation,
+    Relationship,
+    StructuralAnnotationSet,
+)
+from opencontractserver.corpuses.models import (
+    Corpus,
+    CorpusFolder,
+)
+from opencontractserver.types.dicts import (
+    AgentConfigExport,
+    CorpusFolderExport,
+    StructuralAnnotationSetExport,
+)
+from opencontractserver.utils.compact_pawls import compact_pawls_pages
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+User = get_user_model()
+
+
+def import_structural_annotation_set(
+    struct_data: StructuralAnnotationSetExport,
+    label_lookup: dict,
+    user_obj: UserModel,
+) -> StructuralAnnotationSet | None:
+    """
+    Import or retrieve existing StructuralAnnotationSet.
+
+    Uses content_hash for deduplication - if a set with this hash already exists,
+    returns it instead of creating a new one.
+
+    Args:
+        struct_data: StructuralAnnotationSetExport dict
+        label_lookup: Mapping of label text to AnnotationLabel instances
+        user_obj: User performing the import
+
+    Returns:
+        StructuralAnnotationSet instance or None on error
+    """
+    try:
+        content_hash = struct_data["content_hash"]
+
+        # Check if this structural set already exists
+        existing_set = StructuralAnnotationSet.objects.filter(
+            content_hash=content_hash
+        ).first()
+
+        if existing_set:
+            logger.info(f"Structural set {content_hash} already exists, reusing it")
+            return existing_set
+
+        logger.info(f"Creating new structural annotation set {content_hash}")
+
+        # Create files
+        pawls_file = None
+        if struct_data.get("pawls_file_content"):
+            pawls_content = json.dumps(
+                compact_pawls_pages(struct_data["pawls_file_content"])
+            ).encode("utf-8")
+            pawls_file = ContentFile(pawls_content, name="pawls_tokens.json")
+
+        txt_file = None
+        if struct_data.get("txt_content"):
+            txt_content = struct_data["txt_content"].encode("utf-8")
+            txt_file = ContentFile(txt_content, name="extracted_text.txt")
+
+        # Create StructuralAnnotationSet
+        struct_set = StructuralAnnotationSet.objects.create(
+            content_hash=content_hash,
+            parser_name=struct_data.get("parser_name"),
+            parser_version=struct_data.get("parser_version"),
+            page_count=struct_data.get("page_count"),
+            token_count=struct_data.get("token_count"),
+            pawls_parse_file=pawls_file,
+            txt_extract_file=txt_file,
+            creator=user_obj,
+        )
+
+        # Build annotation ID mapping (old export ID -> new DB ID)
+        annot_id_map = {}
+
+        # Create structural annotations
+        for annot_data in struct_data.get("structural_annotations", []):
+            label_text = annot_data.get("annotationLabel", "")
+            label_obj = label_lookup.get((label_text, TOKEN_LABEL)) or label_lookup.get(
+                (label_text, SPAN_LABEL)
+            )
+
+            if not label_obj:
+                logger.warning(
+                    f"Label '{label_text}' not found in lookup, skipping annotation"
+                )
+                continue
+
+            old_id = annot_data.get("id")
+
+            annot = Annotation.objects.create(
+                structural_set=struct_set,
+                annotation_label=label_obj,
+                raw_text=annot_data.get("rawText", ""),
+                page=annot_data.get("page", 0),
+                json=annot_data.get("annotation_json", {}),
+                annotation_type=annot_data.get("annotation_type", ""),
+                # Restore OC_URL ``link_url`` if it was exported. Falsy /
+                # missing values stay NULL on the column.
+                link_url=annot_data.get("link_url") or None,
+                structural=True,
+                creator=user_obj,
+            )
+
+            if old_id:
+                annot_id_map[str(old_id)] = annot.id
+
+        # Second pass: set parent relationships
+        for annot_data in struct_data.get("structural_annotations", []):
+            old_id = annot_data.get("id")
+            parent_old_id = annot_data.get("parent_id")
+
+            if old_id and parent_old_id and str(parent_old_id) in annot_id_map:
+                new_id = annot_id_map[str(old_id)]
+                parent_new_id = annot_id_map[str(parent_old_id)]
+
+                annot = Annotation.objects.get(id=new_id)
+                annot.parent_id = parent_new_id
+                annot.save(update_fields=["parent"])
+
+        # Create structural relationships
+        for rel_data in struct_data.get("structural_relationships", []):
+            label_text = rel_data.get("relationshipLabel", "")
+            label_obj = label_lookup.get((label_text, RELATIONSHIP_LABEL))
+
+            if not label_obj:
+                logger.warning(f"Relationship label '{label_text}' not found, skipping")
+                continue
+
+            # Map old annotation IDs to new ones. The membership check above
+            # guarantees the lookups resolve, so narrow ``int | None`` to
+            # ``int`` for the downstream ``.set(...)`` calls.
+            source_ids: list[int] = [
+                annot_id_map[str(old_id)]
+                for old_id in rel_data.get("source_annotation_ids", [])
+                if str(old_id) in annot_id_map
+            ]
+            target_ids: list[int] = [
+                annot_id_map[str(old_id)]
+                for old_id in rel_data.get("target_annotation_ids", [])
+                if str(old_id) in annot_id_map
+            ]
+
+            if source_ids and target_ids:
+                rel = Relationship.objects.create(
+                    structural_set=struct_set,
+                    relationship_label=label_obj,
+                    structural=True,
+                    creator=user_obj,
+                )
+                rel.source_annotations.set(source_ids)
+                rel.target_annotations.set(target_ids)
+
+        logger.info(f"Created structural set {content_hash} with annotations")
+        return struct_set
+
+    except Exception as e:
+        logger.error(f"Error importing structural annotation set: {e}")
+        return None
+
+
+def import_corpus_folders(
+    folders_data: list[CorpusFolderExport],
+    corpus: Corpus,
+    user_obj: UserModel,
+) -> dict[str, CorpusFolder]:
+    """
+    Import corpus folder hierarchy.
+
+    Reconstructs tree structure from flat list with parent references.
+    Uses FolderCRUDService.create_folder() for folder creation.
+
+    Args:
+        folders_data: List of CorpusFolderExport dicts
+        corpus: Target Corpus instance
+        user_obj: User performing import
+
+    Returns:
+        Mapping of export IDs to created CorpusFolder instances
+    """
+    from opencontractserver.corpuses.services import FolderCRUDService
+
+    folder_map: dict[str, CorpusFolder] = {}
+
+    try:
+        # Sort folders by path depth (ensures parents created before children)
+        sorted_folders = sorted(folders_data, key=lambda f: f["path"].count("/"))
+
+        for folder_data in sorted_folders:
+            export_id = folder_data["id"]
+
+            # Get parent folder if specified
+            parent_folder = None
+            parent_export_id = folder_data.get("parent_id")
+            if parent_export_id and parent_export_id in folder_map:
+                parent_folder = folder_map[parent_export_id]
+
+            # Create folder using service
+            folder, error = FolderCRUDService.create_folder(
+                user=user_obj,
+                corpus=corpus,
+                name=folder_data["name"],
+                parent=parent_folder,
+                description=folder_data.get("description", ""),
+                color=folder_data.get("color", "#05313d"),
+                icon=folder_data.get("icon", "folder"),
+                tags=folder_data.get("tags", []),
+                is_public=folder_data.get("is_public", False),
+            )
+
+            if error or folder is None:
+                logger.error(f"Error creating folder {folder_data['name']}: {error}")
+                continue
+
+            folder_map[export_id] = folder
+            logger.info(f"Created folder: {folder.get_path()}")
+
+    except Exception as e:
+        logger.error(f"Error importing folders: {e}")
+
+    return folder_map
+
+
+def import_agent_config(
+    agent_config: AgentConfigExport,
+    corpus: Corpus,
+) -> None:
+    """
+    Import agent configuration.
+
+    Args:
+        agent_config: AgentConfigExport dict
+        corpus: Target Corpus instance
+    """
+    try:
+        corpus.corpus_agent_instructions = agent_config.get("corpus_agent_instructions")
+        corpus.document_agent_instructions = agent_config.get(
+            "document_agent_instructions"
+        )
+        corpus.save(
+            update_fields=[
+                "corpus_agent_instructions",
+                "document_agent_instructions",
+                "modified",
+            ]
+        )
+        logger.info("Imported agent configuration")
+    except Exception as e:
+        logger.error(f"Error importing agent config: {e}")
+
+
+def import_md_description_revisions(
+    md_description: str | None,
+    revisions_data: list[dict[str, Any]],
+    corpus: Corpus,
+    user_obj: UserModel,
+    doc_filename_to_doc: dict[str, Document] | None = None,
+    annot_old_id_to_new_pk: dict[str | int, int] | None = None,
+) -> None:
+    """V2 back-compat: synthesize a Readme.CAML Document from md_description.
+
+    On a V2 import:
+
+    * If ``annotated_docs`` already contains a Readme.CAML, skip with a
+      warning (``annotated_docs`` wins).
+    * Otherwise create a ``Readme.CAML`` Document with the
+      ``md_description`` body, replay each revision snapshot as a
+      version-tree sibling (oldest first), and run ``oc-import://`` link
+      rewriting on the synthesized body.
+
+    On a V3 import this function is a no-op — V3 archives do not carry
+    the legacy top-level ``md_description`` / ``md_description_revisions``
+    keys (the Readme.CAML Document rides in ``annotated_docs`` like any
+    other Document).
+
+    The Document ``post_save`` signal (Task 3) cascades the cache refresh
+    onto ``Corpus.description`` / ``.description_preview`` /
+    ``.readme_caml_document_id`` after each ``import_document`` call
+    commits.
+
+    Args:
+        md_description: Current markdown description content (V2 only).
+        revisions_data: List of revision dicts (V2 only).
+        corpus: Target Corpus instance.
+        user_obj: User performing import (fallback author when a
+            revision's recorded author_email cannot be resolved).
+        doc_filename_to_doc: Optional mapping of zip filename to imported
+            Document instance — used to rewrite ``oc-import://`` document
+            references in the synthesized body.
+        annot_old_id_to_new_pk: Optional mapping of old annotation id
+            (string or int, as in ``data.json``) to new annotation pk —
+            used to rewrite ``oc-import://`` annotation references in
+            the synthesized body. Revision snapshots are NOT rewritten
+            (their checksums refer to the historical content; rewriting
+            would invalidate the chain) — see ``utils/caml_rewrite.py``.
+
+    Spec:
+        ``docs/superpowers/specs/2026-05-27-canonical-caml-description-refactor-design.md``
+        §4.8.
+    """
+    from opencontractserver.constants.document_processing import (
+        CAML_ARTICLE_TITLE,
+        MARKDOWN_MIME_TYPE,
+    )
+    from opencontractserver.corpuses.services.corpus_documents import (
+        CorpusDocumentService,
+    )
+    from opencontractserver.documents.models import Document
+    from opencontractserver.documents.versioning import import_document
+
+    # V3 archives don't carry md_description / revisions — skip silently
+    # so the dispatcher can call this shim unconditionally.
+    if not md_description and not revisions_data:
+        return
+
+    # ``annotated_docs`` wins: if a Readme.CAML Document is already
+    # attached to the corpus (e.g. a hand-crafted V2 artifact, or any V3
+    # path that reached this function with leftover legacy keys) we
+    # leave it alone.
+    existing = CorpusDocumentService.get_corpus_caml_articles(
+        corpus.creator, corpus
+    ).first()
+    if existing is not None:
+        logger.warning(
+            "V2 import: artifact contains md_description but Readme.CAML "
+            "doc already exists in annotated_docs for corpus_id=%s — "
+            "annotated_docs wins, ignoring md_description.",
+            corpus.pk,
+        )
+        return
+
+    # Rewrite ``oc-import://`` links on the current body using the
+    # filename + annotation id maps the importer aggregates while
+    # creating Documents.  Revision snapshots are left untouched.
+    body = md_description or ""
+    if body and (doc_filename_to_doc or annot_old_id_to_new_pk):
+        from opencontractserver.utils.caml_rewrite import rewrite_oc_import_links
+
+        body, _stats = rewrite_oc_import_links(
+            content=body,
+            corpus=corpus,
+            doc_filename_to_doc=doc_filename_to_doc or {},
+            annot_old_id_to_new_pk=annot_old_id_to_new_pk or {},
+        )
+
+    # Replay revision snapshots oldest-first via ``import_document`` so
+    # each subsequent call chains into the SAME version_tree (the
+    # workhorse opens the existing ``Readme.CAML`` DocumentPath and
+    # creates a new sibling).  After all revisions land, write the
+    # CURRENT body as the final head so it sits at the top of the
+    # version_tree with revisions trailing as historical siblings.
+    sorted_revisions = sorted(revisions_data, key=lambda r: r.get("version", 0))
+    historical_creates: list[tuple[int, datetime]] = []
+
+    for rev in sorted_revisions:
+        snap = rev.get("snapshot")
+        if not snap:
+            # Diff-only revisions can't be replayed standalone — the
+            # workhorse needs raw bytes for the new sibling's
+            # ``txt_extract_file``.
+            continue
+
+        # Resolve original author; fall back to the importing user.
+        author_email = rev.get("author_email") or ""
+        author = User.objects.filter(email=author_email).first() or user_obj
+
+        new_head, _status, _path = import_document(
+            corpus=corpus,
+            path=CAML_ARTICLE_TITLE,
+            content=snap.encode("utf-8"),
+            user=author,
+            file_type=MARKDOWN_MIME_TYPE,
+            title=CAML_ARTICLE_TITLE,
+        )
+
+        # Preserve historical ``created`` timestamp when provided.
+        # ``Document.created`` is ``auto_now_add`` so we patch it
+        # post-create via ``QuerySet.update``.
+        created_str = rev.get("created") or ""
+        if created_str:
+            try:
+                created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                historical_creates.append((new_head.pk, created_dt))
+            except Exception:
+                logger.debug(
+                    "import_md_description_revisions: could not parse "
+                    "revision created timestamp %r — leaving auto_now_add "
+                    "default in place.",
+                    created_str,
+                )
+
+    # Write the current body as the FINAL head so it lands at the top
+    # of the version_tree.  Always issue this call when ``md_description``
+    # is non-empty so the cache cascade reflects the V2 head body — even
+    # if it's byte-identical to the last revision snapshot, ``import_document``
+    # creates a new sibling (no content-based dedup) and the FK flip is
+    # what matters for the cache refresh signal.
+    if body:
+        import_document(
+            corpus=corpus,
+            path=CAML_ARTICLE_TITLE,
+            content=body.encode("utf-8"),
+            user=user_obj,
+            file_type=MARKDOWN_MIME_TYPE,
+            title=CAML_ARTICLE_TITLE,
+        )
+
+    # Restore historical ``created`` timestamps on the sibling Documents.
+    for pk, created_dt in historical_creates:
+        Document.objects.filter(pk=pk).update(created=created_dt)
+
+    # Cascade the cache refresh deterministically. The Document
+    # ``post_save`` signal also schedules a refresh via
+    # ``transaction.on_commit``, but the importer runs inside a long
+    # outer transaction (especially under ``fork_corpus``'s atomic
+    # wrapper, and inside Django TestCase test transactions), so
+    # on_commit may not fire before the caller reads back the corpus
+    # row.  Calling the helper directly here pins the cache to the
+    # head body the moment this shim completes — duplicate work with
+    # the signal is harmless (idempotent update).
+    from opencontractserver.corpuses.services.description_cache import (
+        refresh_description_cache_for_corpus,
+    )
+
+    refresh_description_cache_for_corpus(corpus.pk)
+
+    logger.info(
+        "Imported %d description revision snapshot(s) + current body into "
+        "Readme.CAML for corpus_id=%s.",
+        len(sorted_revisions),
+        corpus.pk,
+    )
+
+
+def import_metadata_schema(
+    metadata_schema: dict | None,
+    corpus: Corpus,
+    user_obj: UserModel,
+    doc_ref_to_doc: dict[str, Document] | None = None,
+) -> dict[str, int]:
+    """
+    Import a corpus's manual metadata schema (Fieldset + manual Columns + Datacells).
+
+    Mirrors what the fork task used to do inline.  This is the shared
+    implementation so both export/import and the fork wrapper produce the
+    same end state.
+
+    Args:
+        metadata_schema: ``MetadataSchemaExport`` dict, or ``None`` to no-op.
+        corpus: Target Corpus instance (the new Fieldset will be linked here).
+        user_obj: Importing user (creator of new Fieldset/Columns/Datacells).
+        doc_ref_to_doc: Optional mapping from ``document_ref`` (hash or in-zip
+            filename) to imported Document.  Required for datacell linkage.
+
+    Returns:
+        Mapping of old Column id (string) -> new Column pk (int).  Useful
+        if a caller wants to re-link other rows post-import.
+    """
+    from opencontractserver.extracts.models import Column, Datacell, Fieldset
+    from opencontractserver.types.enums import PermissionTypes
+    from opencontractserver.utils.permissioning import set_permissions_for_obj_to_user
+
+    column_map: dict[str, int] = {}
+    if not metadata_schema:
+        return column_map
+
+    try:
+        with transaction.atomic():
+            # Detach any pre-existing schema on the target corpus.  The
+            # OneToOne back-reference would otherwise raise on the new
+            # save.  Reuse-by-name would be ambiguous (could collide with
+            # an unrelated fieldset on the same corpus), so we always
+            # create a fresh one.
+            #
+            # After detaching, try to delete the orphaned Fieldset (and its
+            # cascade-deleted Columns / non-extract Datacells) so repeated
+            # imports of the same corpus don't accumulate dead rows.  If
+            # the Fieldset is referenced by an Extract (PROTECT FK), the
+            # delete raises ProtectedError and we leave it orphaned but
+            # still functional — the data isn't actually unreachable.
+            existing = getattr(corpus, "metadata_schema", None)
+            if existing is not None:
+                existing.corpus = None
+                existing.save(update_fields=["corpus"])
+                try:
+                    existing.delete()
+                except ProtectedError:
+                    logger.info(
+                        "import_metadata_schema: orphaned Fieldset %s left in "
+                        "place because at least one Extract still references "
+                        "it (PROTECT FK).",
+                        existing.pk,
+                    )
+
+            fieldset = Fieldset.objects.create(
+                name=metadata_schema.get("fieldset_name", "Metadata"),
+                description=metadata_schema.get("fieldset_description", "") or "",
+                corpus=corpus,
+                creator=user_obj,
+            )
+            set_permissions_for_obj_to_user(user_obj, fieldset, [PermissionTypes.CRUD])
+
+            for col in metadata_schema.get("columns", []) or []:
+                new_column = Column.objects.create(
+                    name=col.get("name", ""),
+                    fieldset=fieldset,
+                    output_type=col.get("output_type", ""),
+                    data_type=col.get("data_type"),
+                    validation_config=(
+                        dict(col["validation_config"])
+                        if col.get("validation_config")
+                        else None
+                    ),
+                    is_manual_entry=True,
+                    default_value=col.get("default_value"),
+                    help_text=col.get("help_text"),
+                    display_order=col.get("display_order", 0),
+                    creator=user_obj,
+                    query=None,
+                    match_text=None,
+                )
+                set_permissions_for_obj_to_user(
+                    user_obj, new_column, [PermissionTypes.CRUD]
+                )
+                old_id = col.get("id")
+                if old_id is not None:
+                    column_map[str(old_id)] = new_column.pk
+
+            doc_ref_to_doc = doc_ref_to_doc or {}
+            for dc in metadata_schema.get("datacells", []) or []:
+                col_old_id = dc.get("column_id")
+                col_pk = column_map.get(str(col_old_id)) if col_old_id else None
+                doc_ref = dc.get("document_ref")
+                doc = doc_ref_to_doc.get(doc_ref) if doc_ref else None
+                if not col_pk or not doc:
+                    logger.debug(
+                        "Skipping datacell: column=%s doc_ref=%s",
+                        col_old_id,
+                        doc_ref,
+                    )
+                    continue
+
+                new_dc = Datacell.objects.create(
+                    column_id=col_pk,
+                    document=doc,
+                    data=dict(dc["data"]) if dc.get("data") else None,
+                    data_definition=dc.get("data_definition", "") or "",
+                    extract=None,
+                    creator=user_obj,
+                )
+                set_permissions_for_obj_to_user(
+                    user_obj, new_dc, [PermissionTypes.CRUD]
+                )
+
+        logger.info(
+            "Imported metadata schema: %d columns, %d datacells",
+            len(column_map),
+            len(metadata_schema.get("datacells", []) or []),
+        )
+    except Exception as e:
+        logger.error("Error importing metadata schema: %s", e, exc_info=True)
+        # The transaction rolled back, so any pks accumulated in
+        # column_map before the failure now point at non-existent rows.
+        # Clear it so downstream callers don't silently re-link to ghosts.
+        column_map.clear()
+
+    return column_map
+
+
+def import_conversations(
+    conversations_data: list,
+    messages_data: list,
+    votes_data: list,
+    corpus: Corpus,
+    user_obj: UserModel,
+    doc_hash_to_doc: dict | None = None,
+) -> None:
+    """
+    Import conversations, messages, and votes.
+
+    Handles:
+    - Corpus-level and document-level conversations
+    - Preserving original timestamps (auto_now_add fields are patched post-create)
+    - Threaded replies via parent_message re-linking
+    - Message data (JSON) field
+
+    Args:
+        conversations_data: List of conversation dicts
+        messages_data: List of message dicts
+        votes_data: List of vote dicts
+        corpus: Target Corpus instance
+        user_obj: User performing import
+        doc_hash_to_doc: Optional mapping of document hash strings to imported
+            Document instances, used to re-link document-level conversations.
+    """
+    from opencontractserver.conversations.models import (
+        ChatMessage,
+        Conversation,
+        MessageVote,
+    )
+
+    try:
+        # Build conversation ID mapping
+        conv_map = {}
+
+        for conv_data in conversations_data:
+            # Get creator user
+            creator_email = conv_data.get("creator_email", "")
+            creator = User.objects.filter(email=creator_email).first() or user_obj
+
+            # Determine corpus vs document linkage
+            chat_with_corpus = (
+                corpus if conv_data.get("chat_with_corpus", True) else None
+            )
+            chat_with_document = None
+            doc_hash = conv_data.get("chat_with_document_hash")
+            if doc_hash_to_doc and doc_hash:
+                chat_with_document = doc_hash_to_doc.get(doc_hash)
+
+            conv = Conversation.objects.create(
+                chat_with_corpus=chat_with_corpus,
+                chat_with_document=chat_with_document,
+                title=conv_data.get("title", ""),
+                description=conv_data.get("description", ""),
+                conversation_type=conv_data.get("conversation_type", "chat"),
+                is_public=conv_data.get("is_public", False),
+                is_locked=conv_data.get("is_locked", False),
+                is_pinned=conv_data.get("is_pinned", False),
+                creator=creator,
+            )
+
+            # Patch auto_now_add / auto_now timestamps using QuerySet.update()
+            # to bypass the auto_now behavior that ignores values in create().
+            timestamp_updates = {}
+            if "created" in conv_data:
+                timestamp_updates["created_at"] = datetime.fromisoformat(
+                    conv_data["created"].replace("Z", "+00:00")
+                )
+            if "modified" in conv_data:
+                timestamp_updates["updated_at"] = datetime.fromisoformat(
+                    conv_data["modified"].replace("Z", "+00:00")
+                )
+            if timestamp_updates:
+                Conversation.all_objects.filter(pk=conv.pk).update(**timestamp_updates)
+
+            conv_map[conv_data["id"]] = conv
+            logger.info(f"Created conversation: {conv.title}")
+
+        # Build message ID mapping — two passes:
+        # Pass 1: create all messages (without parent links)
+        # Pass 2: re-link parent_message references
+        msg_map = {}
+
+        for msg_data in messages_data:
+            conv_export_id = msg_data.get("conversation_id")
+            conversation = conv_map.get(conv_export_id)
+
+            if not conversation:
+                logger.warning(f"Conversation {conv_export_id} not found")
+                continue
+
+            # Get creator
+            creator_email = msg_data.get("creator_email", "")
+            creator = User.objects.filter(email=creator_email).first() or user_obj
+
+            message = ChatMessage.objects.create(
+                conversation=conversation,
+                content=msg_data.get("content", ""),
+                msg_type=msg_data.get("msg_type", "HUMAN"),
+                state=msg_data.get("state", "completed"),
+                agent_type=msg_data.get("agent_type"),
+                data=msg_data.get("data"),
+                creator=creator,
+            )
+
+            # Patch auto_now_add timestamp
+            if "created" in msg_data:
+                created_ts = datetime.fromisoformat(
+                    msg_data["created"].replace("Z", "+00:00")
+                )
+                ChatMessage.all_objects.filter(pk=message.pk).update(
+                    created_at=created_ts
+                )
+
+            msg_map[msg_data["id"]] = message
+
+        # Pass 2: Re-link parent_message references
+        messages_to_update = []
+        for msg_data in messages_data:
+            parent_id = msg_data.get("parent_message_id")
+            if parent_id:
+                child_message = msg_map.get(msg_data["id"])
+                parent = msg_map.get(parent_id)
+                if child_message and parent:
+                    child_message.parent_message = parent
+                    messages_to_update.append(child_message)
+        if messages_to_update:
+            ChatMessage.objects.bulk_update(messages_to_update, ["parent_message"])
+
+        # Import votes
+        for vote_data in votes_data:
+            msg_export_id = vote_data.get("message_id")
+            vote_message = msg_map.get(msg_export_id)
+
+            if not vote_message:
+                continue
+
+            creator_email = vote_data.get("creator_email", "")
+            creator = User.objects.filter(email=creator_email).first() or user_obj
+
+            vote = MessageVote.objects.create(
+                message=vote_message,
+                vote_type=vote_data.get("vote_type", "upvote"),
+                creator=creator,
+            )
+
+            # Patch auto_now_add timestamp.
+            # Note: MessageVote uses .objects (not .all_objects) because it has
+            # no soft-delete support — its default manager is unfiltered.
+            if "created" in vote_data:
+                created_ts = datetime.fromisoformat(
+                    vote_data["created"].replace("Z", "+00:00")
+                )
+                MessageVote.objects.filter(pk=vote.pk).update(created_at=created_ts)
+
+        logger.info(
+            "Imported %d conversations, %d messages, %d votes",
+            len(conversations_data),
+            len(messages_data),
+            len(votes_data),
+        )
+
+    except Exception as e:
+        logger.error("Error importing conversations: %s", e)

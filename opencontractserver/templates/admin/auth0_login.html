@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} | {{ site_title }}</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background-color: #417690;
+            color: white;
+            padding: 10px 20px;
+        }
+        header h1 {
+            font-size: 18px;
+            font-weight: normal;
+        }
+        main {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px 20px;
+        }
+        .login-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-container h2 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 24px;
+        }
+        .messages {
+            list-style: none;
+            margin-bottom: 20px;
+        }
+        .messages li {
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .messages .error {
+            background-color: #fee;
+            border: 1px solid #fcc;
+            color: #c00;
+        }
+        .messages .success {
+            background-color: #efe;
+            border: 1px solid #cfc;
+            color: #060;
+        }
+        .auth0-login-btn {
+            background-color: #eb5424;
+            color: white;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-bottom: 20px;
+            transition: background-color 0.2s;
+        }
+        .auth0-login-btn:hover {
+            background-color: #c4421a;
+        }
+        .auth0-login-btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .divider {
+            text-align: center;
+            margin: 25px 0;
+            color: #666;
+            position: relative;
+        }
+        .divider::before,
+        .divider::after {
+            content: "";
+            display: inline-block;
+            width: 40%;
+            height: 1px;
+            background-color: #ddd;
+            vertical-align: middle;
+            margin: 0 10px;
+        }
+        .form-row {
+            margin-bottom: 20px;
+        }
+        .form-row label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 500;
+        }
+        .form-row input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .form-row input:focus {
+            outline: none;
+            border-color: #417690;
+            box-shadow: 0 0 0 2px rgba(65, 118, 144, 0.2);
+        }
+        .submit-row {
+            margin-top: 25px;
+        }
+        .submit-row input {
+            background-color: #417690;
+            color: white;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+        .submit-row input:hover {
+            background-color: #356070;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .loading.active {
+            display: block;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #417690;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>{{ site_header }}</h1>
+    </header>
+
+    <main>
+        <div class="login-container">
+            <h2>{{ title }}</h2>
+
+            {% if messages %}
+            <ul class="messages">
+                {% for message in messages %}
+                <li class="{{ message.tags }}">{{ message }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            <div id="loading" class="loading">
+                <span class="spinner"></span>
+                <span>Authenticating...</span>
+            </div>
+
+            <ul id="client-messages" class="messages" style="display:none;"></ul>
+
+            <form id="login-form" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ next }}">
+                <input type="hidden" name="token" id="token-input" value="">
+
+                {% if use_auth0 %}
+                <!-- Auth0 Login Button -->
+                <button type="button" id="auth0-login-btn" class="auth0-login-btn">
+                    Sign in with Auth0
+                </button>
+
+                <div class="divider">or use password</div>
+                {% endif %}
+
+                <!-- Standard Login Form -->
+                <div class="form-row">
+                    <label for="id_username">Username:</label>
+                    <input type="text" name="username" id="id_username" autocomplete="username" autofocus>
+                </div>
+                <div class="form-row">
+                    <label for="id_password">Password:</label>
+                    <input type="password" name="password" id="id_password" autocomplete="current-password">
+                </div>
+                <div class="submit-row">
+                    <input type="submit" value="Log in">
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <!-- Shared helpers for rate-limit handling (always available) -->
+    <script nonce="{{ csp_nonce }}">
+        function showMessage(text, type) {
+            var container = document.getElementById('client-messages');
+            container.style.display = '';
+            var li = document.createElement('li');
+            li.className = type || 'error';
+            li.textContent = text;
+            container.appendChild(li);
+        }
+
+        function clearClientMessages() {
+            var container = document.getElementById('client-messages');
+            container.innerHTML = '';
+            container.style.display = 'none';
+        }
+
+        function showLoading(show) {
+            var loading = document.getElementById('loading');
+            var form = document.getElementById('login-form');
+            if (show) {
+                loading.classList.add('active');
+                form.style.display = 'none';
+            } else {
+                loading.classList.remove('active');
+                form.style.display = 'block';
+            }
+        }
+
+        /**
+         * Submit form data via fetch and handle rate-limit (429) responses.
+         * On success the browser is navigated to the redirect target.
+         * On 429 a user-friendly message is shown in-page.
+         */
+        async function submitFormViaFetch(formData) {
+            var form = document.getElementById('login-form');
+            var url = form.action || window.location.pathname;
+
+            try {
+                var response = await fetch(url, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (response.status === 429) {
+                    try {
+                        var data = await response.json();
+                        showMessage(data.error || 'Too many login attempts. Please wait and try again.', 'error');
+                    } catch (e) {
+                        showMessage('Too many login attempts. Please wait and try again.', 'error');
+                    }
+                    showLoading(false);
+                    return;
+                }
+
+                // fetch follows redirects automatically.
+                // On success the server redirects to /admin/ and response.url
+                // reflects the final destination. On auth failure it redirects
+                // back to /admin/login/ where server-set messages are displayed.
+                if (response.redirected && response.url) {
+                    window.location.href = response.url;
+                } else {
+                    window.location.reload();
+                }
+            } catch (error) {
+                console.error('Form submission error:', error);
+                showMessage('An error occurred. Please try again.', 'error');
+                showLoading(false);
+            }
+        }
+
+        // Intercept the standard password form submission so we can
+        // inspect the response status and show rate-limit errors in-page
+        // instead of displaying raw JSON.
+        document.getElementById('login-form').addEventListener('submit', function(e) {
+            // Skip interception when the token field is populated because
+            // that path is handled by submitToken() directly.
+            if (document.getElementById('token-input').value) {
+                return;
+            }
+
+            e.preventDefault();
+            clearClientMessages();
+            submitFormViaFetch(new FormData(this));
+        });
+    </script>
+
+    {% if use_auth0 %}
+    <!-- Auth0 SPA SDK v2.1.3 via jsDelivr CDN with Subresource Integrity.
+         CSP script-src-attr blocks inline onload/onerror handlers, so
+         listeners are attached via addEventListener on a programmatically-
+         created script element. Both listeners are wired BEFORE
+         insertBefore so a cached SDK cannot fire `load` before we are
+         listening, and initAuth0 runs from the load handler instead of
+         synchronously — the latter raced the async-by-default dynamic
+         script and surfaced a misleading "SRI check may have failed"
+         error on every page load. -->
+    <script nonce="{{ csp_nonce }}">
+        var auth0Client = null;
+
+        function handleScriptError() {
+            var btn = document.getElementById('auth0-login-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Auth0 unavailable (security check failed)';
+            }
+            console.error('Auth0 SDK failed to load (network or SRI check)');
+        }
+
+        async function initAuth0() {
+            try {
+                auth0Client = await auth0.createAuth0Client({
+                    domain: '{{ auth0_domain|escapejs }}',
+                    clientId: '{{ auth0_client_id|escapejs }}',
+                    authorizationParams: {
+                        audience: '{{ auth0_audience|escapejs }}',
+                        redirect_uri: window.location.origin + window.location.pathname
+                    },
+                    cacheLocation: 'memory'
+                });
+
+                // Handle callback from Auth0
+                if (window.location.search.includes('code=') && window.location.search.includes('state=')) {
+                    showLoading(true);
+                    try {
+                        await auth0Client.handleRedirectCallback();
+                        var token = await auth0Client.getTokenSilently();
+                        var nextUrl = localStorage.getItem('admin_auth0_next') || '/admin/';
+                        localStorage.removeItem('admin_auth0_next');
+                        submitToken(token, nextUrl);
+                    } catch (error) {
+                        console.error('Auth0 callback error:', error);
+                        showLoading(false);
+                        localStorage.removeItem('admin_auth0_next');
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    }
+                }
+            } catch (error) {
+                console.error('Auth0 initialization error:', error);
+                var btn = document.getElementById('auth0-login-btn');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = 'Auth0 unavailable';
+                }
+            }
+        }
+
+        async function loginWithAuth0() {
+            if (!auth0Client) {
+                console.error('Auth0 client not initialized');
+                return;
+            }
+            showLoading(true);
+            try {
+                localStorage.setItem('admin_auth0_next', '{{ next|escapejs }}' || '/admin/');
+                await auth0Client.loginWithRedirect({
+                    authorizationParams: {
+                        redirect_uri: window.location.origin + window.location.pathname
+                    }
+                });
+            } catch (error) {
+                console.error('Auth0 login error:', error);
+                showLoading(false);
+            }
+        }
+
+        async function submitToken(token, nextUrl) {
+            var form = document.getElementById('login-form');
+            document.getElementById('token-input').value = token;
+            if (nextUrl) {
+                form.querySelector('input[name="next"]').value = nextUrl;
+            }
+            clearClientMessages();
+            await submitFormViaFetch(new FormData(form));
+        }
+
+        // Bind Auth0 button via addEventListener (not inline onclick)
+        var auth0Btn = document.getElementById('auth0-login-btn');
+        if (auth0Btn) {
+            auth0Btn.addEventListener('click', loginWithAuth0);
+        }
+
+        var sdkScript = document.createElement('script');
+        sdkScript.id = 'auth0-sdk';
+        sdkScript.src = 'https://cdn.jsdelivr.net/npm/@auth0/auth0-spa-js@2.1.3/dist/auth0-spa-js.production.min.js';
+        sdkScript.integrity = 'sha384-Rm7o4Fw8223WH3gI6PLQ7HyUa90mzfyOcEcDMUpdhm8lU+drc1rkQDwzhxAjhZMb';
+        sdkScript.crossOrigin = 'anonymous';
+        sdkScript.addEventListener('load', initAuth0);
+        sdkScript.addEventListener('error', handleScriptError);
+        document.currentScript.parentNode.insertBefore(sdkScript, document.currentScript.nextSibling);
+    </script>
+    {% endif %}
+</body>
+</html>

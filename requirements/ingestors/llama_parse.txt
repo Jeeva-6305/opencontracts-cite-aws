@@ -1,0 +1,2 @@
+# LlamaParse document parsing
+llama-parse>=0.5.0

@@ -1,0 +1,1930 @@
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import _ from "lodash";
+import { toast } from "react-toastify";
+import { notifyTransientNetworkError } from "../utils/networkNotifications";
+import {
+  useLazyQuery,
+  useMutation,
+  useQuery,
+  useReactiveVar,
+} from "@apollo/client";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  FileText,
+  MessageSquare,
+  Table,
+  Factory,
+  Brain,
+  Settings,
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Trophy,
+  BarChart3,
+  MoreVertical,
+  Link2,
+  Sparkles,
+} from "lucide-react";
+import { OS_LEGAL_COLORS } from "../assets/configurations/osLegalStyles";
+import { motion, AnimatePresence } from "framer-motion";
+
+import { ConfirmModal } from "../components/widgets/modals/ConfirmModal";
+import { CreateExtractModal } from "../components/widgets/modals/CreateExtractModal";
+import {
+  CreateAndSearchBar,
+  DropdownActionProps,
+} from "../components/layout/CreateAndSearchBar";
+import { CardLayout } from "../components/layout/CardLayout";
+import {
+  CorpusModal,
+  CorpusFormData,
+} from "../components/corpuses/CorpusModal";
+import { CorpusListView } from "../components/corpuses/CorpusListView";
+
+import {
+  openedCorpus,
+  selectedDocumentIds,
+  corpusSearchTerm,
+  deletingCorpus,
+  showRemoveDocsFromCorpusModal,
+  editingCorpus,
+  viewingCorpus,
+  documentSearchTerm,
+  userObj,
+  annotationContentSearchTerm,
+  openedDocument,
+  selectedMetaAnnotationId,
+  filterToLabelId,
+  analysisSearchTerm,
+  exportingCorpus,
+  showSelectCorpusAnalyzerOrFieldsetModal,
+  selectedTab,
+  selectedThreadId,
+  corpusPowerUserMode,
+  showCreateExtractModal,
+  showImportCorpusModal,
+  backendUserObj,
+} from "../graphql/cache";
+import { updateTabParam, updateModeParam } from "../utils/navigationUtils";
+import {
+  UPDATE_CORPUS,
+  UpdateCorpusOutputs,
+  UpdateCorpusInputs,
+  CREATE_CORPUS,
+  CreateCorpusOutputs,
+  CreateCorpusInputs,
+  DELETE_CORPUS,
+  DeleteCorpusOutputs,
+  DeleteCorpusInputs,
+  REMOVE_DOCUMENTS_FROM_CORPUS,
+  RemoveDocumentsFromCorpusOutputs,
+  RemoveDocumentsFromCorpusInputs,
+} from "../graphql/mutations";
+import {
+  GetCorpusesInputs,
+  GetCorpusesOutputs,
+  GetCorpusMetadataInputs,
+  GetCorpusMetadataOutputs,
+  GET_CORPUSES,
+  GET_CORPUS_METADATA,
+  GET_CORPUS_STATS,
+  GET_CORPUS_FILTER_COUNTS,
+  GetCorpusFilterCountsInputs,
+  GetCorpusFilterCountsOutputs,
+  RequestDocumentsInputs,
+  RequestDocumentsOutputs,
+  GET_DOCUMENTS,
+} from "../graphql/queries";
+import { CorpusType, LabelType } from "../types/graphql-api";
+import { LooseObject, PermissionTypes } from "../components/types";
+import { FilterToLabelSelector } from "../components/widgets/model-filters/FilterToLabelSelector";
+import { ensureValidCorpusId } from "../utils/graphqlGuards";
+import { CorpusAnnotationCards } from "../components/annotations/CorpusAnnotationCards";
+import { CorpusDocumentCards } from "../components/documents/CorpusDocumentCards";
+import {
+  FolderDocumentBrowser,
+  ViewMode,
+} from "../components/corpuses/folders/FolderDocumentBrowser";
+import { CorpusAnalysesCards } from "../components/analyses/CorpusAnalysesCards";
+import { FilterToAnalysesSelector } from "../components/widgets/model-filters/FilterToAnalysesSelector";
+import useWindowDimensions from "../components/hooks/WindowDimensionHook";
+import { SelectExportTypeModal } from "../components/widgets/modals/SelectExportTypeModal";
+import { ImportCorpusModal } from "../components/widgets/modals/ImportCorpusModal";
+import { FilterToCorpusActionOutputs } from "../components/widgets/model-filters/FilterToCorpusActionOutputs";
+import { getPermissions } from "../utils/transform";
+import {
+  MOBILE_VIEW_BREAKPOINT,
+  DEBOUNCE,
+} from "../assets/configurations/constants";
+import { useEnv } from "../components/hooks/UseEnv";
+import { CorpusDashboard } from "../components/corpuses/CorpusDashboard";
+import { useCorpusState } from "../components/annotator/context/CorpusAtom";
+import { CorpusSettings } from "../components/corpuses/CorpusSettings";
+import { CorpusChat } from "../components/corpuses/CorpusChat";
+import { ChatMessageSource } from "../components/annotator/context/ChatSourceAtom";
+import {
+  encodeTextBlock,
+  textBlockFromSpan,
+  textBlockFromTokensByPage,
+} from "../utils/textBlockEncoding";
+import { buildQueryParams } from "../utils/navigationUtils";
+import { toGlobalId } from "../utils/idValidation";
+import { CorpusDescriptionEditor } from "../components/corpuses/CorpusDescriptionEditor";
+import { CamlArticleEditor } from "../components/corpuses/CamlArticleEditor";
+import { CorpusDiscussionsView } from "../components/discussions/CorpusDiscussionsView";
+import { BadgeManagement } from "../components/badges/BadgeManagement";
+import { CorpusEngagementDashboard } from "../components/analytics/CorpusEngagementDashboard";
+import { CorpusDocumentRelationships } from "../components/corpuses/CorpusDocumentRelationships";
+import { CorpusQueryView } from "./CorpusQueryView";
+import { ExtractsTabContent } from "./ExtractsTabContent";
+import { ResearchTabContent } from "./ResearchTabContent";
+import {
+  BackNavButton,
+  BottomSheetHandle,
+  CleanViewContainer,
+  CollapsedBadge,
+  CorpusViewContainer,
+  ExitPowerUserWrapper,
+  MainContentArea,
+  MobileBackButton,
+  MobileKebabButton,
+  MobileMenuBackdrop,
+  NavigationHeader,
+  NavigationItem,
+  NavigationItems,
+  NavigationSidebar,
+  NavigationToggle,
+  NavItemBadge,
+  SearchBarContainer,
+  SearchBarWithNav,
+  TabNavigationHeader,
+  TabTitle,
+} from "./Corpuses.styles";
+
+export const Corpuses = () => {
+  const { width } = useWindowDimensions();
+
+  const use_mobile_layout = width <= MOBILE_VIEW_BREAKPOINT;
+
+  const show_remove_docs_from_corpus_modal = useReactiveVar(
+    showRemoveDocsFromCorpusModal
+  );
+  const selected_metadata_id_to_filter_on = useReactiveVar(
+    selectedMetaAnnotationId
+  );
+
+  // CRITICAL: Only call useCorpusState ONCE to avoid infinite re-renders
+  // Calling it multiple times creates new object references each time
+  const corpusState = useCorpusState();
+  const {
+    setCorpus,
+    canUpdateCorpus,
+    myPermissions: corpusAtomPermissions,
+  } = corpusState;
+
+  const selected_document_ids = useReactiveVar(selectedDocumentIds);
+  const document_search_term = useReactiveVar(documentSearchTerm);
+  const corpus_search_term = useReactiveVar(corpusSearchTerm);
+  const analysis_search_term = useReactiveVar(analysisSearchTerm);
+  const deleting_corpus = useReactiveVar(deletingCorpus);
+  const corpus_to_edit = useReactiveVar(editingCorpus);
+  const corpus_to_view = useReactiveVar(viewingCorpus);
+  const opened_corpus = useReactiveVar(openedCorpus);
+
+  const exporting_corpus = useReactiveVar(exportingCorpus);
+  const opened_document = useReactiveVar(openedDocument);
+  const filter_to_label_id = useReactiveVar(filterToLabelId);
+
+  const currentUser = useReactiveVar(userObj);
+  const backendUser = useReactiveVar(backendUserObj);
+  const annotation_search_term = useReactiveVar(annotationContentSearchTerm);
+  const show_create_extract_modal = useReactiveVar(showCreateExtractModal);
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [show_multi_delete_confirm, setShowMultiDeleteConfirm] =
+    useState<boolean>(false);
+  const [show_new_corpus_modal, setShowNewCorpusModal] =
+    useState<boolean>(false);
+  // Tab state is now URL-driven via CentralRouteManager
+  const urlTab = useReactiveVar(selectedTab);
+  const [showDescriptionEditor, setShowDescriptionEditor] =
+    useState<boolean>(false);
+  const [showArticleEditor, setShowArticleEditor] = useState<boolean>(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState<boolean>(false); // Collapsed by default, opens on hover
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
+
+  // Power user mode: URL-driven via CentralRouteManager (?mode=power)
+  const isPowerUserMode = useReactiveVar(corpusPowerUserMode);
+  const { REACT_APP_ALLOW_IMPORTS } = useEnv();
+
+  const [corpusSearchCache, setCorpusSearchCache] =
+    useState<string>(corpus_search_term);
+  const [analysesSearchCache, setAnalysesSearchCache] =
+    useState<string>(analysis_search_term);
+  const [documentSearchCache, setDocumentSearchCache] =
+    useState<string>(document_search_term);
+  const [annotationSearchCache, setAnnotationSearchCache] = useState<string>(
+    annotation_search_term
+  );
+
+  // View mode state for the Documents tab
+  const [documentsViewMode, setDocumentsViewMode] =
+    useState<ViewMode>("modern-list");
+
+  // Active tab on the Corpuses list view ("all" | "my" | "shared" | "public").
+  // Lifted up here so it can drive the GET_CORPUSES query variables — the
+  // server applies the tab filter and counts so pagination + badges stay
+  // accurate regardless of how many pages have been loaded.
+  const [corpusListActiveFilter, setCorpusListActiveFilter] =
+    useState<string>("all");
+
+  // Active sort for the Corpuses list view.  Values map 1:1 to the
+  // backend ``orderBy`` argument on GET_CORPUSES.  Default is
+  // ``-created`` (newest first) so the dropdown label matches the
+  // returned order; the model's intrinsic ``ordering = ("created",)``
+  // is ascending and would surface the oldest corpuses first.
+  const [corpusListSort, setCorpusListSort] = useState<string>("-created");
+
+  // Track whether CorpusChat is showing a conversation (vs the list view)
+  // Used to hide parent navigation header when CorpusChat handles its own
+  const [chatInConversation, setChatInConversation] = useState<boolean>(false);
+
+  // Derive whether the discussions tab is showing a thread detail from URL state.
+  // The ?thread= param is synced to selectedThreadId by CentralRouteManager.
+  const currentSelectedThreadId = useReactiveVar(selectedThreadId);
+  const discussionInThreadView = currentSelectedThreadId !== null;
+
+  /**
+   * Navigate to a source document with text block highlighting.
+   * Called from CorpusChat when a user clicks a source citation.
+   * Builds a deep link URL with ?tb= param and navigates to the document.
+   *
+   * Each silent-return path emits a console.warn so a user reporting "the
+   * source link doesn't work" can immediately see which guard is firing in
+   * DevTools instead of nothing happening on click.
+   */
+  const handleSourceNavigate = useCallback(
+    (source: ChatMessageSource) => {
+      if (!source.document_id) {
+        console.warn(
+          "[handleSourceNavigate] No-op: source has no document_id; backend payload may be missing it.",
+          source
+        );
+        return;
+      }
+      if (!opened_corpus) {
+        console.warn(
+          "[handleSourceNavigate] No-op: opened_corpus is null; route resolution did not populate the openedCorpus reactive var."
+        );
+        return;
+      }
+
+      // Validate corpus has slug data. This should always be present when
+      // viewing a corpus (resolved from a slug-based URL by CentralRouteManager).
+      // Falling back to opened_corpus.id (a Relay global ID) would produce an
+      // unresolvable URL like /d/user/Q29ycHVzVHlwZTo1/... that 404s.
+      if (!opened_corpus.slug || !opened_corpus.creator?.slug) {
+        console.warn(
+          "[handleSourceNavigate] No-op: corpus missing slug data; cannot build canonical /d/<user-slug>/<corpus-slug>/<doc> URL.",
+          {
+            corpusSlug: opened_corpus.slug,
+            creatorSlug: opened_corpus.creator?.slug,
+            corpusId: opened_corpus.id,
+          }
+        );
+        return;
+      }
+
+      // Build the text block encoding from source data.
+      let textBlock: string | null = null;
+      if (
+        source.isTextBased &&
+        typeof source.startIndex === "number" &&
+        typeof source.endIndex === "number"
+      ) {
+        textBlock = encodeTextBlock(
+          textBlockFromSpan(source.startIndex, source.endIndex)
+        );
+      } else if (
+        source.tokensByPage &&
+        Object.keys(source.tokensByPage).length > 0
+      ) {
+        textBlock = encodeTextBlock(
+          textBlockFromTokensByPage(source.tokensByPage)
+        );
+      }
+
+      // Build the navigation URL. We only have the document's raw DB id from
+      // the WebSocket source, not its slug, so we use a Relay global ID for
+      // the document segment. CentralRouteManager Phase 1 detects this as a
+      // GraphQL ID and resolves it via resolveDocumentById, then redirects to
+      // the canonical slug URL. The corpus segment uses validated slugs from
+      // the already-resolved corpus.
+      const docGraphQLId = toGlobalId("DocumentType", source.document_id);
+
+      // Prefer the precise text-block highlight when we have one. If the
+      // text-block could not be built (most often a PDF source whose multipage
+      // annotation_json has page keys but empty tokensJsons arrays — we have
+      // the annotation but not the per-token indices), fall back to selecting
+      // the annotation by its global ID via the existing ?ann= URL convention.
+      // Synthetic search-result annotations use negative IDs (see
+      // search.py); those are not real Annotation rows, so skip the ?ann=
+      // fallback and at least navigate to the document without a highlight
+      // rather than silently doing nothing.
+      const hasRealAnnotationId =
+        typeof source.annotation_id === "number" && source.annotation_id > 0;
+
+      let queryString: string;
+      if (textBlock) {
+        queryString = buildQueryParams({ textBlock });
+      } else if (hasRealAnnotationId) {
+        const annGlobalId = toGlobalId("AnnotationType", source.annotation_id);
+        queryString = buildQueryParams({ annotationIds: [annGlobalId] });
+        console.debug(
+          "[handleSourceNavigate] No text-block reference available; falling back to ?ann= deep-link.",
+          { annotationId: source.annotation_id, annGlobalId }
+        );
+      } else {
+        // Last-ditch: open the document with no highlight rather than no-op.
+        queryString = "";
+        console.warn(
+          "[handleSourceNavigate] No text-block AND no real annotation_id; navigating to document without a highlight.",
+          {
+            isTextBased: source.isTextBased,
+            startIndex: source.startIndex,
+            endIndex: source.endIndex,
+            tokensByPageCounts: source.tokensByPage
+              ? Object.fromEntries(
+                  Object.entries(source.tokensByPage).map(([page, tokens]) => [
+                    page,
+                    tokens.length,
+                  ])
+                )
+              : {},
+            annotationId: source.annotation_id,
+          }
+        );
+      }
+
+      const targetUrl = `/d/${opened_corpus.creator.slug}/${opened_corpus.slug}/${docGraphQLId}${queryString}`;
+
+      console.debug("[handleSourceNavigate] Navigating to source:", {
+        targetUrl,
+        documentId: source.document_id,
+        annotationId: source.annotation_id,
+      });
+
+      navigate(targetUrl);
+    },
+    [opened_corpus, navigate]
+  );
+
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    setDocumentsViewMode(mode);
+  }, []);
+
+  const opened_corpus_id = opened_corpus?.id ? opened_corpus.id : null;
+  const corpus_exit_path = opened_corpus?.isPersonal
+    ? "/documents"
+    : "/corpuses";
+  const corpus_exit_label = opened_corpus?.isPersonal
+    ? "Documents"
+    : "Corpuses";
+  let raw_permissions = opened_corpus?.myPermissions;
+  if (opened_corpus && raw_permissions !== undefined) {
+    raw_permissions = getPermissions(raw_permissions);
+  }
+
+  /**
+   * Set up the debounced search handling for the two SearchBars (Corpus search is rendered first by this component,
+   * but it will switch to doc search if you select a corpus, as this will navigate to show the corpus' docs)
+   */
+  const debouncedCorpusSearch = useRef(
+    _.debounce((searchTerm) => {
+      corpusSearchTerm(searchTerm);
+    }, DEBOUNCE.SEARCH_MS)
+  );
+
+  const debouncedDocumentSearch = useRef(
+    _.debounce((searchTerm) => {
+      documentSearchTerm(searchTerm);
+    }, DEBOUNCE.SEARCH_MS)
+  );
+
+  const debouncedAnnotationSearch = useRef(
+    _.debounce((searchTerm) => {
+      annotationContentSearchTerm(searchTerm);
+    }, DEBOUNCE.SEARCH_MS)
+  );
+
+  const debouncedAnalysisSearch = useRef(
+    _.debounce((searchTerm) => {
+      analysisSearchTerm(searchTerm);
+    }, DEBOUNCE.SEARCH_MS)
+  );
+
+  const handleCorpusSearchChange = (value: string) => {
+    setCorpusSearchCache(value);
+    debouncedCorpusSearch.current(value);
+  };
+
+  const handleDocumentSearchChange = (value: string) => {
+    setDocumentSearchCache(value);
+    debouncedDocumentSearch.current(value);
+  };
+
+  const handleAnnotationSearchChange = (value: string) => {
+    setAnnotationSearchCache(value);
+    debouncedAnnotationSearch.current(value);
+  };
+
+  const handleAnalysisSearchChange = (value: string) => {
+    setAnalysesSearchCache(value);
+    debouncedAnalysisSearch.current(value);
+  };
+
+  // Check for ?create=true query param to open the create corpus modal
+  // This allows linking directly to corpus creation from other pages (e.g., Discover page)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get("create") === "true") {
+      setShowNewCorpusModal(true);
+      // Strip the trigger param via React Router so the routing system stays
+      // in sync (avoids bypassing CentralRouteManager's URL observer).
+      searchParams.delete("create");
+      const remaining = searchParams.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: remaining ? `?${remaining}` : "",
+        },
+        { replace: true }
+      );
+    }
+  }, [location.search, location.pathname, navigate]);
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Query to get corpuses
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // CRITICAL: Memoize corpus_variables to prevent infinite re-renders
+  // Creating new object on every render causes Apollo to refetch → cache update → re-render → new object → LOOP
+  const corpus_variables = useMemo<GetCorpusesInputs>(() => {
+    const vars: GetCorpusesInputs = {};
+    if (corpus_search_term) {
+      vars.textSearch = corpus_search_term;
+    }
+    // Map active tab to backend filter args. Only one tab flag at a time —
+    // "all" sends no flag so the server returns the full visible set.
+    if (corpusListActiveFilter === "my") {
+      vars.mine = true;
+    } else if (corpusListActiveFilter === "shared") {
+      vars.sharedWithMe = true;
+    } else if (corpusListActiveFilter === "public") {
+      vars.isPublic = true;
+    }
+    // Sort is opt-in: an empty string means "let the backend apply its
+    // default model ordering" and we omit the variable entirely so the
+    // GraphQL filter does not invoke the OrderingFilter (the
+    // ``filter_queryset`` personal-corpus exclusion only kicks in for
+    // explicit Top sorts).
+    if (corpusListSort) {
+      vars.orderBy = corpusListSort;
+    }
+    return vars;
+  }, [corpus_search_term, corpusListActiveFilter, corpusListSort]);
+
+  // Now that auth is guaranteed to be ready before this component renders,
+  // we can use a regular useQuery
+  const {
+    refetch: refetchCorpuses,
+    loading: loading_corpuses,
+    networkStatus: corpus_network_status,
+    error: corpus_load_error,
+    data: corpus_response,
+    fetchMore: fetchMoreCorpusesOrig,
+  } = useQuery<GetCorpusesOutputs, GetCorpusesInputs>(GET_CORPUSES, {
+    variables: corpus_variables,
+    // CHANGED from "network-only" to "cache-and-network" to prevent infinite refetch loops
+    // "network-only" bypasses cache and refetches on EVERY render, causing infinite loops
+    // "cache-and-network" uses cache immediately and fetches in background for updates
+    fetchPolicy: "cache-and-network",
+    notifyOnNetworkStatusChange: true, // required to get loading signal on fetchMore
+  });
+
+  // Tab counts for the Corpuses list view. Server-computed so they reflect
+  // the user's actual visible set (and the current text search) without
+  // needing every page paginated in.
+  const corpus_filter_counts_variables = useMemo<GetCorpusFilterCountsInputs>(
+    () => (corpus_search_term ? { textSearch: corpus_search_term } : {}),
+    [corpus_search_term]
+  );
+  const {
+    data: corpus_filter_counts_data,
+    refetch: refetchCorpusFilterCounts,
+  } = useQuery<GetCorpusFilterCountsOutputs, GetCorpusFilterCountsInputs>(
+    GET_CORPUS_FILTER_COUNTS,
+    {
+      variables: corpus_filter_counts_variables,
+      fetchPolicy: "cache-and-network",
+    }
+  );
+  const corpus_filter_counts =
+    corpus_filter_counts_data?.corpusFilterCounts ?? {
+      all: 0,
+      mine: 0,
+      shared: 0,
+      public: 0,
+    };
+
+  /* --------------------------------------------------------------------------------------------------
+   * Entity resolution is now handled by CentralRouteManager
+   * - When user navigates to /c/:user/:corpus → CentralRouteManager fetches and sets openedCorpus
+   * - This component just reads openedCorpus reactive var and displays appropriate view
+   * -------------------------------------------------------------------------------------------------- */
+
+  if (corpus_load_error) {
+    notifyTransientNetworkError("ERROR\nUnable to fetch corpuses.", {
+      toastId: "fetch-corpuses-error",
+    });
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Query to get Metadata for Selected Corpus
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  const [
+    fetchMetadata,
+    {
+      called: metadata_called,
+      loading: metadata_loading,
+      data: metadata_data,
+      refetch: refetchMetadata,
+    },
+  ] = useLazyQuery<GetCorpusMetadataOutputs, GetCorpusMetadataInputs>(
+    GET_CORPUS_METADATA
+  );
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Query to refetch documents if dropdown action is used to delink a doc from corpus
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  const [
+    fetchDocumentsLazily,
+    { error: documents_error, refetch: refetch_documents },
+  ] = useLazyQuery<RequestDocumentsOutputs, RequestDocumentsInputs>(
+    GET_DOCUMENTS,
+    {
+      variables: {
+        ...(opened_corpus_id
+          ? {
+              annotateDocLabels: true,
+              includeMetadata: true,
+              inCorpusWithId: opened_corpus_id,
+              includeCaml: true,
+            }
+          : { annotateDocLabels: false, includeMetadata: false }),
+        ...(filter_to_label_id ? { hasLabelWithId: filter_to_label_id } : {}),
+        ...(selected_metadata_id_to_filter_on
+          ? { hasAnnotationsWithIds: selected_metadata_id_to_filter_on }
+          : {}),
+        ...(document_search_term ? { textSearch: document_search_term } : {}),
+      },
+      notifyOnNetworkStatusChange: true, // necessary in order to trigger loading signal on fetchMore
+    }
+  );
+  if (documents_error) {
+    notifyTransientNetworkError(
+      "ERROR\nCould not fetch documents for corpus.",
+      {
+        toastId: "fetch-documents-error",
+      }
+    );
+  }
+
+  useEffect(() => {
+    // console.log("Corpuses.tsx - Loading Corpuses changed...");
+  }, [loading_corpuses]);
+
+  const fetchMoreCorpuses = (args: any) => {
+    // console.log("Corpuses.txt - fetchMoreCorpuses()");
+    fetchMoreCorpusesOrig(args);
+  };
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Effects to reload data on certain changes
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Handle metadata refetch when auth changes and corpus is open
+  useEffect(() => {
+    if (currentUser && metadata_called && opened_corpus?.id) {
+      // Only refetch if we have previously called the query successfully
+      if (metadata_data || metadata_loading) {
+        refetchMetadata();
+      } else {
+        // Re-fetch with current corpus ID if we haven't fetched before
+        const { id: validId, isValid } = ensureValidCorpusId(opened_corpus);
+        if (isValid && validId) {
+          fetchMetadata({ variables: { metadataForCorpusId: validId } });
+        }
+      }
+    }
+  }, [currentUser]); // Re-run when user changes
+
+  // Search term effect - needed because fetchPolicy is "network-only"
+  useEffect(() => {
+    refetchCorpuses();
+  }, [corpus_search_term]);
+
+  // REMOVED: location-based refetch - was hammering server on every navigation
+  // Component already refetches on mount and when search term changes
+
+  // Sync opened_corpus to CorpusAtom and fetch metadata when corpus selected
+  // CRITICAL: Use stable ID as dependency to avoid infinite loops
+  // Apollo reactive vars return new object references even when data unchanged
+  const openedCorpusId = opened_corpus?.id;
+
+  useEffect(() => {
+    if (opened_corpus) {
+      const corpus_permissions = getPermissions(opened_corpus.myPermissions);
+      setCorpus({
+        selectedCorpus: opened_corpus,
+        myPermissions: corpus_permissions,
+      });
+
+      // Fetch metadata when corpus is selected
+      const { id: validId, isValid } = ensureValidCorpusId(opened_corpus);
+      if (isValid && validId) {
+        try {
+          fetchMetadata({ variables: { metadataForCorpusId: validId } });
+          refetchStats(); // Refresh stats when corpus changes
+        } catch (error) {
+          console.error("Error fetching corpus metadata:", error);
+        }
+      } else {
+        console.warn(
+          "Skipping metadata fetch - invalid corpus ID:",
+          opened_corpus.id
+        );
+      }
+    } else {
+      setCorpus({
+        selectedCorpus: opened_corpus,
+        myPermissions: [],
+      });
+    }
+    // REMOVED: refetchCorpuses on opened_corpus null - unnecessary, query already has data
+  }, [openedCorpusId]); // Only depend on ID, not full object
+
+  // Update CorpusAtom when metadata is fetched
+  // IMPORTANT: Only depend on corpus ID, not the whole object, to avoid infinite loops
+  // GraphQL returns new object references on every render even if data unchanged
+  const metadataCorpusId = metadata_data?.corpus?.id;
+
+  useEffect(() => {
+    if (metadata_data?.corpus && metadataCorpusId) {
+      const corpus = metadata_data.corpus;
+      const corpus_permissions = getPermissions(corpus.myPermissions || []);
+      setCorpus({
+        selectedCorpus: corpus,
+        myPermissions: corpus_permissions,
+      });
+    }
+  }, [metadataCorpusId]); // Only depend on ID, not the full object
+
+  // NOTE: A previous version of this effect called ``refetch_documents()``
+  // whenever ``selected_metadata_id_to_filter_on`` changed. ``refetch_documents``
+  // is the ``refetch`` of a ``useLazyQuery`` that fires the query *immediately*
+  // — including on mount, when the dependency starts as ``undefined``. That
+  // produced a duplicate ``GET_DOCUMENTS`` network call on every corpus open
+  // (with no ``inFolderId``), racing against the per-folder ``GET_DOCUMENTS``
+  // already issued by ``CorpusDocumentCards``. The list there is authoritative
+  // and re-runs on its own when ``selected_metadata_id_to_filter_on`` changes
+  // (its variables include ``hasAnnotationsWithIds``), so this effect is
+  // redundant — and the duplicate response merging into the same cache nodes
+  // was contributing to the document-list reload loop.
+
+  // Fetch corpus stats - with proper ID validation
+  // Handle both string and number IDs, convert to string for GraphQL
+  const validCorpusId = opened_corpus?.id
+    ? String(opened_corpus.id)
+    : undefined;
+
+  const {
+    data: statsData,
+    loading: statsLoading,
+    error: statsError,
+    refetch: refetchStats,
+  } = useQuery(GET_CORPUS_STATS, {
+    variables: { corpusId: validCorpusId || "" }, // Provide empty string as fallback
+    skip: !validCorpusId, // Skip if we don't have a valid ID
+    // REMOVED pollInterval - was hammering server every 5 seconds
+    // Stats are not real-time critical and will update when corpus changes
+  });
+
+  // Log stats errors for debugging
+  useEffect(() => {
+    if (statsError) {
+      console.error("Error fetching corpus stats:", statsError);
+    }
+  }, [statsError]);
+
+  // CRITICAL: Memoize stats object to prevent new object reference on every render
+  // New object reference would cause navigationItems useMemo to re-run infinitely
+  // Depend on primitive values, not the object itself, as Apollo returns new object refs
+  const stats = useMemo(() => {
+    return (
+      statsData?.corpusStats || {
+        totalDocs: 0,
+        totalAnnotations: 0,
+        totalAnalyses: 0,
+        totalExtracts: 0,
+        totalThreads: 0,
+        totalChats: 0,
+        totalRelationships: 0,
+      }
+    );
+  }, [
+    statsData?.corpusStats?.totalDocs,
+    statsData?.corpusStats?.totalAnnotations,
+    statsData?.corpusStats?.totalAnalyses,
+    statsData?.corpusStats?.totalExtracts,
+    statsData?.corpusStats?.totalThreads,
+    statsData?.corpusStats?.totalChats,
+    statsData?.corpusStats?.totalRelationships,
+  ]);
+
+  // When query is skipped (no valid corpus ID), treat as not loading
+  const effectiveStatsLoading = validCorpusId ? statsLoading : false;
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Query to shape item data
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  const corpus_data = corpus_response?.corpuses?.edges
+    ? corpus_response.corpuses.edges
+    : [];
+  const corpus_items = corpus_data
+    .map((edge) => {
+      if (!edge || !edge.node) return undefined;
+
+      // Create a copy of the node
+      const node = { ...edge.node };
+
+      // Don't transform permissions here - let CorpusItem handle it
+      // to avoid double transformation
+
+      return node;
+    })
+    .filter((item): item is CorpusType => !!item);
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Query to mutate corpus
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  const [tryMutateCorpus, { loading: update_corpus_loading }] = useMutation<
+    UpdateCorpusOutputs,
+    UpdateCorpusInputs
+  >(UPDATE_CORPUS, {
+    onCompleted: (data) => {
+      refetchCorpuses();
+      refetchStats(); // Refresh stats after corpus update
+      refetchCorpusFilterCounts();
+      editingCorpus(null);
+    },
+  });
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Query to delete corpus
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  const [tryDeleteCorpus, { loading: delete_corpus_loading }] = useMutation<
+    DeleteCorpusOutputs,
+    DeleteCorpusInputs
+  >(DELETE_CORPUS, {
+    // Remove the deleted corpus from every cached connection (every tab,
+    // every search term) so the list updates instantly without waiting on
+    // the refetch round-trip.
+    update: (cache, { data }, { variables }) => {
+      if (!data?.deleteCorpus?.ok || !variables?.id) return;
+      const cacheId = cache.identify({
+        __typename: "CorpusType",
+        id: variables.id,
+      });
+      if (cacheId) {
+        cache.evict({ id: cacheId });
+        cache.gc();
+      }
+    },
+    onCompleted: () => {
+      // cache.evict gives instant removal in every cached page; the refetch
+      // is still load-bearing because deleting a corpus shifts every
+      // server-side pagination cursor that comes after it, so subsequent
+      // fetchMore calls would otherwise skip or duplicate items.
+      refetchCorpuses();
+      refetchCorpusFilterCounts();
+    },
+  });
+
+  const [removeDocumentsFromCorpus, {}] = useMutation<
+    RemoveDocumentsFromCorpusOutputs,
+    RemoveDocumentsFromCorpusInputs
+  >(REMOVE_DOCUMENTS_FROM_CORPUS, {
+    onCompleted: () => {
+      fetchDocumentsLazily();
+      refetchStats(); // Refresh stats after removing documents
+    },
+  });
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Query to delete corpus
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  const [tryCreateCorpus, { loading: create_corpus_loading }] = useMutation<
+    CreateCorpusOutputs,
+    CreateCorpusInputs
+  >(CREATE_CORPUS, {
+    onCompleted: (data) => {
+      refetchCorpuses();
+      refetchStats(); // Refresh stats after corpus creation
+      refetchCorpusFilterCounts();
+      setShowNewCorpusModal(false);
+    },
+  });
+
+  // Handle corpus update with properly typed form data
+  const handleUpdateCorpus = (formData: CorpusFormData) => {
+    const variables: UpdateCorpusInputs = {
+      id: formData.id!,
+    };
+
+    // Only include changed fields
+    if (formData.title !== undefined) variables.title = formData.title;
+    if (formData.description !== undefined)
+      variables.description = formData.description;
+    if (formData.slug !== undefined) variables.slug = formData.slug;
+    if (formData.labelSet !== undefined)
+      variables.labelSet = formData.labelSet ?? undefined;
+    if (formData.preferredEmbedder !== undefined)
+      variables.preferredEmbedder = formData.preferredEmbedder ?? undefined;
+    if (formData.icon !== undefined && formData.icon !== null) {
+      variables.icon = formData.icon;
+    }
+    if (formData.categories !== undefined) {
+      variables.categories = formData.categories;
+    }
+    if (formData.license !== undefined) {
+      variables.license = formData.license;
+    }
+    if (formData.licenseLink !== undefined) {
+      variables.licenseLink = formData.licenseLink;
+    }
+
+    tryMutateCorpus({ variables });
+  };
+
+  const handleDeleteCorpus = (corpus_id: string | undefined) => {
+    if (corpus_id) {
+      // console.log("handleDeleteCorpus", corpus_id)
+      tryDeleteCorpus({ variables: { id: corpus_id } })
+        .then(({ data }) => {
+          if (data?.deleteCorpus?.ok) {
+            toast.success("SUCCESS! Deleted corpus.");
+          } else {
+            toast.error(
+              data?.deleteCorpus?.message ?? "ERROR! Could not delete corpus."
+            );
+          }
+        })
+        .catch((err) => {
+          toast.error("ERROR! Could not delete corpus.");
+        });
+    }
+  };
+
+  const handleRemoveContracts = (delete_ids: string[]) => {
+    // console.log("handleRemoveContracts", delete_ids);
+    removeDocumentsFromCorpus({
+      variables: {
+        corpusId: opened_corpus?.id ? opened_corpus.id : "",
+        documentIdsToRemove: delete_ids,
+      },
+    })
+      .then(() => {
+        selectedDocumentIds([]);
+        toast.success("SUCCESS! Contracts removed.");
+      })
+      .catch(() => {
+        selectedDocumentIds([]);
+        toast.error("ERROR! Contract removal failed.");
+      });
+  };
+
+  // Handle corpus creation with properly typed form data
+  const handleCreateNewCorpus = (formData: CorpusFormData) => {
+    // Runtime validation for required fields
+    if (!formData.title || !formData.description) {
+      toast.error("Title and description are required");
+      return;
+    }
+
+    const variables: CreateCorpusInputs = {
+      title: formData.title,
+      description: formData.description,
+    };
+
+    // Include optional fields if provided
+    if (formData.labelSet) variables.labelSet = formData.labelSet;
+    if (formData.preferredEmbedder)
+      variables.preferredEmbedder = formData.preferredEmbedder;
+    if (formData.icon) {
+      variables.icon = formData.icon;
+    }
+    if (formData.categories && formData.categories.length > 0) {
+      variables.categories = formData.categories;
+    }
+    // Create path: only send license fields when non-empty (server defaults apply).
+    // Update path (above) uses !== undefined to allow sending empty strings to clear values.
+    if (formData.license) {
+      variables.license = formData.license;
+    }
+    if (formData.licenseLink) {
+      variables.licenseLink = formData.licenseLink;
+    }
+
+    tryCreateCorpus({ variables })
+      .then((data) => {
+        if (data.data?.createCorpus.ok) {
+          toast.success("SUCCESS. Created corpus.");
+        } else {
+          toast.error(`FAILED on server: ${data.data?.createCorpus.message}`);
+        }
+        refetchCorpuses();
+        setShowNewCorpusModal(false);
+      })
+      .catch((err) => {
+        toast.error("ERROR. Could not create corpus.");
+      });
+  };
+
+  let corpus_actions: DropdownActionProps[] = [];
+  if (currentUser) {
+    corpus_actions = [
+      ...corpus_actions,
+      {
+        icon: "plus",
+        title: "Create Corpus",
+        key: `Corpus_action_${0}`,
+        color: "blue",
+        action_function: () => setShowNewCorpusModal(true),
+      },
+    ];
+
+    // Imports are gated by a global env kill-switch (used to disable for the
+    // public demo) AND by the server-derived `canImportCorpus` permission on
+    // the authenticated user. Mirrors the backend check in the
+    // /api/imports/corpus/ and /api/imports/zip-to-corpus/ REST endpoints.
+    if (REACT_APP_ALLOW_IMPORTS && backendUser?.canImportCorpus) {
+      corpus_actions.push({
+        icon: "cloud upload",
+        title: "Import Corpus",
+        key: `Corpus_action_${1}`,
+        color: "green",
+        action_function: () => showImportCorpusModal(true),
+      });
+    }
+  }
+
+  let contract_actions: DropdownActionProps[] = [];
+  if (selected_document_ids.length > 0 && currentUser) {
+    contract_actions.push({
+      icon: "remove circle",
+      title: "Remove Contract(s)",
+      key: `Corpus_action_${corpus_actions.length}`,
+      color: "blue",
+      action_function: () => setShowMultiDeleteConfirm(true),
+    });
+  }
+
+  // Actions for analyzer pane (if user is signed in)
+  if (
+    currentUser &&
+    raw_permissions?.includes(PermissionTypes.CAN_UPDATE) &&
+    raw_permissions?.includes(PermissionTypes.CAN_READ)
+  ) {
+    corpus_actions.push({
+      icon: "factory",
+      title: "Start New Analysis",
+      key: `Analysis_action_${corpus_actions.length}`,
+      color: "blue",
+      action_function: () => showSelectCorpusAnalyzerOrFieldsetModal(true),
+    });
+  }
+
+  // NOTE: canUpdateCorpus and corpusAtomPermissions are already destructured above
+  // Removed duplicate useCorpusState() call that was causing infinite re-renders
+
+  // Tab IDs for URL-based navigation (order matches navigationItems array)
+  const TAB_IDS = [
+    "home",
+    "documents",
+    "annotations",
+    "analyses",
+    "extracts",
+    "research",
+    "relationships",
+    "discussions",
+    "chats",
+    "analytics",
+    "settings",
+    "badges",
+  ] as const;
+
+  // Helper to navigate to a tab by index or ID
+  const setActiveTab = (tabIndexOrId: number | string) => {
+    const tabId =
+      typeof tabIndexOrId === "number" ? TAB_IDS[tabIndexOrId] : tabIndexOrId;
+    // Use null for "home" to keep URLs clean (home is default)
+    updateTabParam(location, navigate, tabId === "home" ? null : tabId);
+    // Refresh stats on tab switch to ensure counts are up to date
+    if (validCorpusId) {
+      refetchStats();
+    }
+  };
+
+  // Derive active tab index from URL
+  const active_tab = useMemo(() => {
+    if (!urlTab) return 0; // Default to home
+    const index = TAB_IDS.indexOf(urlTab as (typeof TAB_IDS)[number]);
+    if (index < 0) {
+      console.warn(
+        `[Corpuses] Invalid tab ID "${urlTab}" in URL, defaulting to home. Valid tabs: ${TAB_IDS.join(
+          ", "
+        )}`
+      );
+    }
+    return index >= 0 ? index : 0;
+  }, [urlTab]);
+
+  // Navigation items configuration
+  // Memoize to prevent recreating on every render
+  const navigationItems = useMemo(() => {
+    return [
+      {
+        id: "home",
+        label: "Home",
+        icon: <Brain />,
+        component: (
+          <CorpusQueryView
+            opened_corpus={opened_corpus}
+            setShowDescriptionEditor={setShowDescriptionEditor}
+            setShowArticleEditor={setShowArticleEditor}
+            onNavigate={(tabIndex) => setActiveTab(tabIndex)}
+            onBack={() => navigate(corpus_exit_path)}
+            navigateBackLabel={corpus_exit_label}
+            canUpdate={canUpdateCorpus}
+            stats={stats}
+            statsLoading={effectiveStatsLoading}
+            onOpenMobileMenu={() => setMobileSidebarOpen(true)}
+            onSourceNavigate={handleSourceNavigate}
+            isPowerUserMode={isPowerUserMode}
+            onModeToggle={
+              currentUser
+                ? () =>
+                    updateModeParam(
+                      location,
+                      navigate,
+                      isPowerUserMode ? null : "power"
+                    )
+                : undefined
+            }
+          />
+        ),
+      },
+      {
+        id: "documents",
+        label: "Documents",
+        icon: <FileText />,
+        badge: stats.totalDocs,
+        component: (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <TabNavigationHeader>
+              <BackNavButton
+                onClick={() => setActiveTab(0)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                title="Back to Home"
+              >
+                <ArrowLeft />
+              </BackNavButton>
+              <TabTitle>Documents</TabTitle>
+              <MobileKebabButton
+                onClick={() => setMobileSidebarOpen(true)}
+                aria-label="Open navigation menu"
+              >
+                <MoreVertical />
+              </MobileKebabButton>
+            </TabNavigationHeader>
+            <div>
+              {opened_corpus_id && (
+                <FolderDocumentBrowser
+                  corpusId={opened_corpus_id}
+                  viewMode={documentsViewMode}
+                  onViewModeChange={handleViewModeChange}
+                >
+                  <CorpusDocumentCards
+                    opened_corpus_id={opened_corpus_id}
+                    viewMode={documentsViewMode}
+                    onOpenArticleEditor={() => setShowArticleEditor(true)}
+                    canUpdate={canUpdateCorpus}
+                  />
+                </FolderDocumentBrowser>
+              )}
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "annotations",
+        label: "Annotations",
+        icon: <MessageSquare />,
+        badge: stats.totalAnnotations,
+        component: (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <TabNavigationHeader>
+              <BackNavButton
+                onClick={() => setActiveTab(0)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                title="Back to Home"
+              >
+                <ArrowLeft />
+              </BackNavButton>
+              <TabTitle>Annotations</TabTitle>
+              <MobileKebabButton
+                onClick={() => setMobileSidebarOpen(true)}
+                aria-label="Open navigation menu"
+              >
+                <MoreVertical />
+              </MobileKebabButton>
+            </TabNavigationHeader>
+            <div>
+              <CorpusAnnotationCards opened_corpus_id={opened_corpus_id} />
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "analyses",
+        label: "Analyses",
+        icon: <Factory />,
+        badge: stats.totalAnalyses,
+        component: (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <TabNavigationHeader>
+              <BackNavButton
+                onClick={() => setActiveTab(0)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                title="Back to Home"
+              >
+                <ArrowLeft />
+              </BackNavButton>
+              <TabTitle>Analyses</TabTitle>
+              <MobileKebabButton
+                onClick={() => setMobileSidebarOpen(true)}
+                aria-label="Open navigation menu"
+              >
+                <MoreVertical />
+              </MobileKebabButton>
+            </TabNavigationHeader>
+            <div>
+              <CorpusAnalysesCards />
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "extracts",
+        label: "Extracts",
+        icon: <Table />,
+        badge: stats.totalExtracts,
+        component: (
+          <ExtractsTabContent
+            setActiveTab={setActiveTab}
+            onOpenMobileMenu={() => setMobileSidebarOpen(true)}
+          />
+        ),
+      },
+      {
+        id: "research",
+        label: "Research",
+        icon: <Sparkles />,
+        component: (
+          <ResearchTabContent
+            setActiveTab={setActiveTab}
+            onOpenMobileMenu={() => setMobileSidebarOpen(true)}
+          />
+        ),
+      },
+      {
+        id: "relationships",
+        label: "Relationships",
+        icon: <Link2 />,
+        badge: stats.totalRelationships,
+        component: opened_corpus?.id ? (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <TabNavigationHeader>
+              <BackNavButton
+                onClick={() => setActiveTab(0)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                title="Back to Home"
+              >
+                <ArrowLeft />
+              </BackNavButton>
+              <TabTitle>Document Relationships</TabTitle>
+              <MobileKebabButton
+                onClick={() => setMobileSidebarOpen(true)}
+                aria-label="Open navigation menu"
+              >
+                <MoreVertical />
+              </MobileKebabButton>
+            </TabNavigationHeader>
+            <div>
+              <CorpusDocumentRelationships corpusId={opened_corpus.id} />
+            </div>
+          </div>
+        ) : null,
+      },
+      {
+        id: "discussions",
+        label: "Discussions",
+        icon: <MessageSquare />,
+        badge: stats.totalThreads || 0,
+        component: opened_corpus?.id ? (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {/* Only show parent header when viewing thread list */}
+            {/* When viewing inline thread detail, CorpusDiscussionsView handles its own */}
+            {!discussionInThreadView && (
+              <TabNavigationHeader>
+                <BackNavButton
+                  onClick={() => setActiveTab(0)}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  title="Back to Home"
+                >
+                  <ArrowLeft />
+                </BackNavButton>
+                <TabTitle>Discussions</TabTitle>
+                <MobileKebabButton
+                  onClick={() => setMobileSidebarOpen(true)}
+                  aria-label="Open navigation menu"
+                >
+                  <MoreVertical />
+                </MobileKebabButton>
+              </TabNavigationHeader>
+            )}
+            <div>
+              <CorpusDiscussionsView corpusId={opened_corpus.id} hideHeader />
+            </div>
+          </div>
+        ) : null,
+      },
+      {
+        id: "chats",
+        label: "Chats",
+        icon: <Brain />,
+        badge: stats.totalChats,
+        component: opened_corpus?.id ? (
+          // Bound the chat tab to viewport-minus-navbar so MessagesArea's
+          // internal overflow-y:auto kicks in and the input stays pinned to
+          // the bottom. The surrounding shell (root, CorpusViewContainer,
+          // MainContentArea) all use min-height for natural document flow,
+          // so without an explicit bound here the chat would expand to fit
+          // every message instead of scrolling. CardLayout's outer padding
+          // is zeroed above for this tab, so we don't have to subtract it.
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              height:
+                "calc(var(--oc-visible-viewport-height, 100vh) - var(--oc-navbar-height, 4.5rem))",
+              maxHeight:
+                "calc(var(--oc-visible-viewport-height, 100vh) - var(--oc-navbar-height, 4.5rem))",
+              minHeight: 0,
+              overflow: "hidden",
+            }}
+          >
+            {/* Only show parent header when CorpusChat is in list view */}
+            {/* When in conversation view, CorpusChat renders its own navigation */}
+            {!chatInConversation && (
+              <TabNavigationHeader>
+                <BackNavButton
+                  onClick={() => setActiveTab(0)}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  title="Back to Home"
+                >
+                  <ArrowLeft />
+                </BackNavButton>
+                <TabTitle>Chat History</TabTitle>
+                <MobileKebabButton
+                  onClick={() => setMobileSidebarOpen(true)}
+                  aria-label="Open navigation menu"
+                >
+                  <MoreVertical />
+                </MobileKebabButton>
+              </TabNavigationHeader>
+            )}
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <CorpusChat
+                corpusId={opened_corpus.id}
+                showLoad={true}
+                onMessageSelect={() => {}}
+                onSourceNavigate={handleSourceNavigate}
+                setShowLoad={() => {}}
+                onViewModeChange={setChatInConversation}
+                onNavigateHome={() => setActiveTab(0)}
+                // The chats tab's TabNavigationHeader (rendered above when in
+                // list view) already provides Back navigation on every screen
+                // size, so suppress the inner filter-bar Back to avoid the
+                // duplicate-back-button UX bug.
+                hideListBackButton
+              />
+            </div>
+          </div>
+        ) : null,
+      },
+      {
+        id: "analytics",
+        label: "Analytics",
+        icon: <BarChart3 />,
+        component: opened_corpus?.id ? (
+          <CorpusEngagementDashboard corpusId={opened_corpus.id} />
+        ) : null,
+      },
+      ...(opened_corpus && canUpdateCorpus
+        ? [
+            {
+              id: "settings",
+              label: "Settings",
+              icon: <Settings />,
+              component: opened_corpus?.title ? (
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <TabNavigationHeader>
+                    <BackNavButton
+                      onClick={() => setActiveTab(0)}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      title="Back to Home"
+                    >
+                      <ArrowLeft />
+                    </BackNavButton>
+                    <TabTitle>Settings</TabTitle>
+                    <MobileKebabButton
+                      onClick={() => setMobileSidebarOpen(true)}
+                      aria-label="Open navigation menu"
+                    >
+                      <MoreVertical />
+                    </MobileKebabButton>
+                  </TabNavigationHeader>
+                  <div>
+                    <CorpusSettings
+                      corpus={{
+                        id: opened_corpus.id,
+                        title: opened_corpus.title,
+                        description: opened_corpus.description || "",
+                        allowComments: opened_corpus.allowComments || false,
+                        preferredEmbedder: opened_corpus.preferredEmbedder,
+                        slug: (opened_corpus as any).slug || null,
+                        creator: opened_corpus.creator,
+                        created: opened_corpus.created,
+                        modified: opened_corpus.modified,
+                        isPublic: opened_corpus.isPublic,
+                        myPermissions: corpusAtomPermissions,
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : null,
+            },
+            {
+              id: "badges",
+              label: "Badges",
+              icon: <Trophy />,
+              component: opened_corpus?.id ? (
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <TabNavigationHeader>
+                    <BackNavButton
+                      onClick={() => setActiveTab(0)}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      title="Back to Home"
+                    >
+                      <ArrowLeft />
+                    </BackNavButton>
+                    <TabTitle>Badges</TabTitle>
+                    <MobileKebabButton
+                      onClick={() => setMobileSidebarOpen(true)}
+                      aria-label="Open navigation menu"
+                    >
+                      <MoreVertical />
+                    </MobileKebabButton>
+                  </TabNavigationHeader>
+                  <div style={{ flex: 1, overflow: "auto" }}>
+                    <BadgeManagement corpusId={opened_corpus.id} />
+                  </div>
+                </div>
+              ) : null,
+            },
+          ]
+        : []),
+    ];
+  }, [
+    openedCorpusId, // Use stable ID instead of full object
+    opened_corpus_id,
+    opened_corpus?.isPersonal,
+    stats.totalDocs,
+    stats.totalAnnotations,
+    stats.totalAnalyses,
+    stats.totalExtracts,
+    stats.totalThreads,
+    stats.totalChats,
+    stats.totalRelationships,
+    canUpdateCorpus,
+    documentsViewMode, // Required for view mode toggle to work
+    chatInConversation, // Required for chat tab header visibility
+    currentSelectedThreadId, // Required for discussions tab header visibility (URL-driven)
+    isPowerUserMode, // Required for mode toggle button label and callback
+    // Note: corpusAtomPermissions is an array that changes, but canUpdateCorpus is derived from it
+    // and is a stable boolean, so we don't need corpusAtomPermissions in deps
+  ]);
+
+  const currentView = navigationItems[active_tab];
+
+  let content = <></>;
+  if (
+    (opened_corpus === null || opened_corpus === undefined) &&
+    (opened_document === null || opened_document === undefined)
+  ) {
+    content = (
+      <CorpusListView
+        corpuses={corpus_items}
+        pageInfo={corpus_response?.corpuses?.pageInfo}
+        loading={
+          loading_corpuses ||
+          delete_corpus_loading ||
+          update_corpus_loading ||
+          create_corpus_loading
+        }
+        networkStatus={corpus_network_status}
+        fetchMore={fetchMoreCorpuses}
+        onCreateCorpus={() => setShowNewCorpusModal(true)}
+        onImportCorpus={() => showImportCorpusModal(true)}
+        searchValue={corpusSearchCache}
+        onSearchChange={handleCorpusSearchChange}
+        allowImport={
+          REACT_APP_ALLOW_IMPORTS && Boolean(backendUser?.canImportCorpus)
+        }
+        activeFilter={corpusListActiveFilter}
+        onFilterChange={setCorpusListActiveFilter}
+        filterCounts={corpus_filter_counts}
+        sortValue={corpusListSort}
+        onSortChange={setCorpusListSort}
+      />
+    );
+  } else if (
+    opened_corpus && // Corpus selected
+    !opened_document // No document selected
+  ) {
+    // Determine the content to display in the main area
+    const mainContent = isPowerUserMode
+      ? currentView?.component
+      : navigationItems.find((item) => item.id === "home")?.component;
+
+    content = isPowerUserMode ? (
+      <CorpusViewContainer id="corpus-view-container">
+        {/* Mobile backdrop */}
+        <AnimatePresence>
+          {mobileSidebarOpen && (
+            <MobileMenuBackdrop
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileSidebarOpen(false)}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Navigation Sidebar */}
+        <NavigationSidebar
+          data-testid="navigation-sidebar"
+          $isExpanded={use_mobile_layout ? mobileSidebarOpen : sidebarExpanded}
+          initial={{
+            width: use_mobile_layout ? "0" : sidebarExpanded ? "280px" : "80px",
+          }}
+          animate={{
+            width: use_mobile_layout
+              ? mobileSidebarOpen
+                ? "280px"
+                : "0"
+              : sidebarExpanded
+              ? "280px"
+              : "80px",
+          }}
+          transition={{ duration: 0.3, ease: "easeInOut" }}
+          onMouseEnter={() => !use_mobile_layout && setSidebarExpanded(true)}
+          onMouseLeave={() => !use_mobile_layout && setSidebarExpanded(false)}
+        >
+          <BottomSheetHandle
+            onClick={() => use_mobile_layout && setMobileSidebarOpen(false)}
+          />
+          <NavigationHeader
+            $isExpanded={
+              use_mobile_layout ? mobileSidebarOpen : sidebarExpanded
+            }
+          >
+            {(use_mobile_layout ? mobileSidebarOpen : sidebarExpanded) && (
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: 0.1 }}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.25rem",
+                  flex: 1,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "0.6875rem",
+                    fontWeight: 500,
+                    color: OS_LEGAL_COLORS.textMuted,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  {opened_corpus ? "Corpus" : "Navigation"}
+                </div>
+                <div
+                  style={{
+                    fontSize: "1rem",
+                    fontWeight: 600,
+                    color: OS_LEGAL_COLORS.textPrimary,
+                    letterSpacing: "-0.015em",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {opened_corpus ? opened_corpus.title : "Menu"}
+                </div>
+              </motion.div>
+            )}
+            {!use_mobile_layout && (
+              <NavigationToggle
+                data-testid="sidebar-toggle"
+                onClick={() => setSidebarExpanded(!sidebarExpanded)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                style={{
+                  marginLeft: sidebarExpanded ? "0" : "auto",
+                  marginRight: sidebarExpanded ? "0" : "auto",
+                }}
+              >
+                {sidebarExpanded ? <ChevronLeft /> : <ChevronRight />}
+              </NavigationToggle>
+            )}
+          </NavigationHeader>
+
+          <NavigationItems id="nav-items">
+            {navigationItems.map((item, index) => (
+              <NavigationItem
+                data-item-id={item.id}
+                key={item.id}
+                $isActive={active_tab === index}
+                $isExpanded={
+                  use_mobile_layout ? mobileSidebarOpen : sidebarExpanded
+                }
+                onClick={() => {
+                  setActiveTab(index);
+                  if (use_mobile_layout) {
+                    setMobileSidebarOpen(false);
+                  }
+                  // Refresh stats when switching tabs
+                  refetchStats();
+                }}
+                whileHover={{ x: 2 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <div style={{ position: "relative" }}>
+                  {item.icon}
+                  {item.badge !== undefined &&
+                    !sidebarExpanded &&
+                    !use_mobile_layout && (
+                      <CollapsedBadge $isZero={item.badge === 0}>
+                        {item.badge > 0 ? item.badge : "–"}
+                      </CollapsedBadge>
+                    )}
+                </div>
+                {(use_mobile_layout ? mobileSidebarOpen : sidebarExpanded) && (
+                  <>
+                    <span style={{ flex: "1", textAlign: "left" }}>
+                      {item.label}
+                    </span>
+                    {item.badge !== undefined && (
+                      <NavItemBadge
+                        $isActive={active_tab === index}
+                        $isZero={item.badge === 0}
+                      >
+                        {item.badge > 0 ? item.badge : "–"}
+                      </NavItemBadge>
+                    )}
+                  </>
+                )}
+              </NavigationItem>
+            ))}
+          </NavigationItems>
+
+          {/* Exit to Explore mode button */}
+          <ExitPowerUserWrapper>
+            <NavigationItem
+              $isActive={false}
+              $isExpanded={
+                use_mobile_layout ? mobileSidebarOpen : sidebarExpanded
+              }
+              onClick={() => updateModeParam(location, navigate, null)}
+              whileHover={{ x: 2 }}
+              whileTap={{ scale: 0.98 }}
+              data-testid="exit-power-user"
+              style={{ opacity: 0.7 }}
+            >
+              <ArrowLeft />
+              {(use_mobile_layout ? mobileSidebarOpen : sidebarExpanded) && (
+                <span style={{ flex: "1", textAlign: "left" }}>Explore</span>
+              )}
+            </NavigationItem>
+          </ExitPowerUserWrapper>
+        </NavigationSidebar>
+
+        {/* Main content area */}
+        <MainContentArea id="main-corpus-content-area">
+          {mainContent}
+        </MainContentArea>
+      </CorpusViewContainer>
+    ) : (
+      <CleanViewContainer id="corpus-clean-view">
+        {mainContent}
+      </CleanViewContainer>
+    );
+  } else if (
+    opened_corpus !== null &&
+    opened_corpus !== undefined &&
+    opened_document !== null &&
+    opened_document !== undefined
+  ) {
+    content = <></>;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Entity resolution is now handled by CentralRouteManager            */
+  /* - /corpuses route → shows list (no entity)                         */
+  /* - /c/:user/:corpus route → CentralRouteManager sets openedCorpus   */
+  /* This component just reads openedCorpus and renders appropriately   */
+  /* ------------------------------------------------------------------ */
+
+  return (
+    <CardLayout
+      style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+        // The home and chats tabs both own viewport-bounded layouts:
+        // CorpusQueryView (home) and CorpusChat (chats) each size themselves
+        // to calc(100dvh - navbar) with the composer pinned to the bottom and
+        // messages scrolling internally. CardLayout's default outer padding
+        // (~0.75rem per side on desktop) would wrap that full-height container,
+        // pushing the pinned input ~1.5rem below the viewport so it is
+        // partially clipped behind a slight page scroll. Drop the padding for
+        // both tabs so the height math stays exact. (The landing/details views
+        // on the home tab center their own max-width content with internal
+        // padding, so they are unaffected by losing the thin outer frame.)
+        ...(currentView?.id === "home" || currentView?.id === "chats"
+          ? { padding: 0 }
+          : {}),
+      }}
+      Modals={
+        <>
+          {opened_corpus && showDescriptionEditor && (
+            <CorpusDescriptionEditor
+              corpusId={opened_corpus.id}
+              isOpen={showDescriptionEditor}
+              onClose={() => setShowDescriptionEditor(false)}
+              onUpdate={() => {
+                const { id: validId, isValid } =
+                  ensureValidCorpusId(opened_corpus);
+                if (isValid && validId) {
+                  fetchMetadata({
+                    variables: { metadataForCorpusId: validId },
+                  });
+                }
+                refetchStats(); // Refresh stats after description update
+                setShowDescriptionEditor(false);
+              }}
+            />
+          )}
+          {opened_corpus && showArticleEditor && (
+            <CamlArticleEditor
+              corpusId={opened_corpus.id}
+              isOpen={showArticleEditor}
+              onClose={() => setShowArticleEditor(false)}
+              onUpdate={() => {
+                refetchStats();
+              }}
+            />
+          )}
+          <ConfirmModal
+            message={`Are you sure you want to delete corpus?`}
+            yesAction={() => handleDeleteCorpus(deleting_corpus?.id)}
+            noAction={() => deletingCorpus(null)}
+            toggleModal={() => deletingCorpus(null)}
+            visible={Boolean(deleting_corpus)}
+          />
+          <ConfirmModal
+            message={"Remove selected contracts?"}
+            yesAction={() => handleRemoveContracts(selected_document_ids)}
+            noAction={() => setShowMultiDeleteConfirm(false)}
+            toggleModal={() => setShowMultiDeleteConfirm(false)}
+            visible={show_multi_delete_confirm}
+          />
+          <ConfirmModal
+            message={`Are you sure you want to remove contract(s) from corpus?`}
+            yesAction={() => handleRemoveContracts(selected_document_ids)}
+            noAction={() =>
+              showRemoveDocsFromCorpusModal(!show_remove_docs_from_corpus_modal)
+            }
+            toggleModal={() =>
+              showRemoveDocsFromCorpusModal(!show_remove_docs_from_corpus_modal)
+            }
+            visible={show_remove_docs_from_corpus_modal}
+          />
+          <CorpusModal
+            open={corpus_to_edit !== null}
+            mode="EDIT"
+            corpus={corpus_to_edit}
+            onSubmit={handleUpdateCorpus}
+            onClose={() => editingCorpus(null)}
+            loading={update_corpus_loading}
+          />
+          <SelectExportTypeModal
+            open={exporting_corpus !== null}
+            onClose={() => exportingCorpus(null)}
+          />
+          {corpus_to_view !== null ? (
+            <CorpusModal
+              open={corpus_to_view !== null}
+              mode="VIEW"
+              corpus={corpus_to_view}
+              onClose={() => viewingCorpus(null)}
+            />
+          ) : (
+            <></>
+          )}
+
+          {show_new_corpus_modal ? (
+            <CorpusModal
+              open={show_new_corpus_modal}
+              mode="CREATE"
+              onSubmit={handleCreateNewCorpus}
+              onClose={() => setShowNewCorpusModal(false)}
+              loading={create_corpus_loading}
+            />
+          ) : (
+            <></>
+          )}
+
+          <CreateExtractModal
+            open={show_create_extract_modal}
+            onClose={() => showCreateExtractModal(false)}
+            corpusId={opened_corpus?.id}
+          />
+        </>
+      }
+      SearchBar={
+        opened_corpus === null ||
+        currentView?.id === "home" ||
+        // Research owns its full toolbar (search + filter + start) inside
+        // ResearchTabContent, so it suppresses the outer SearchBar like chats.
+        currentView?.id === "research" ||
+        // Chats own their viewport-bounded layout; rendering a search bar
+        // above adds vertical overhead that pushes the chat past the
+        // viewport and forces the page navbar offscreen.
+        currentView?.id === "chats" ? null : currentView?.id === "documents" ? (
+          <SearchBarWithNav>
+            <MobileBackButton
+              onClick={() => {
+                navigate(corpus_exit_path); // CentralRouteManager will clear openedCorpus
+              }}
+              title={`Back to ${corpus_exit_label}`}
+            >
+              <ArrowLeft />
+            </MobileBackButton>
+            <SearchBarContainer>
+              <CreateAndSearchBar
+                onChange={handleDocumentSearchChange}
+                actions={contract_actions}
+                placeholder="Search for document in corpus..."
+                value={documentSearchCache}
+                filters={
+                  opened_corpus ? (
+                    <>
+                      {/* <FilterToMetadataSelector
+                        selected_corpus_id={opened_corpus.id}
+                      /> Temporarily disabled - not working and not really in-use*/}
+                      <FilterToLabelSelector
+                        only_labels_for_labelset_id={
+                          opened_corpus.labelSet?.id
+                            ? opened_corpus.labelSet.id
+                            : ""
+                        }
+                        label_type={LabelType.DocTypeLabel}
+                      />
+                    </>
+                  ) : (
+                    <></>
+                  )
+                }
+              />
+            </SearchBarContainer>
+          </SearchBarWithNav>
+        ) : currentView?.id === "annotations" ? (
+          <CreateAndSearchBar
+            onChange={handleAnnotationSearchChange}
+            actions={corpus_actions}
+            placeholder="Search for annotated text in corpus..."
+            value={annotationSearchCache}
+            filters={
+              opened_corpus ? (
+                <>
+                  <FilterToCorpusActionOutputs />
+                  <FilterToAnalysesSelector corpus={opened_corpus} />
+                  <FilterToLabelSelector
+                    only_labels_for_labelset_id={
+                      opened_corpus.labelSet?.id
+                        ? opened_corpus.labelSet.id
+                        : ""
+                    }
+                    label_type={LabelType.TokenLabel}
+                  />
+                </>
+              ) : (
+                <></>
+              )
+            }
+          />
+        ) : currentView?.id === "analyses" || currentView?.id === "extracts" ? (
+          <SearchBarWithNav>
+            <MobileBackButton
+              onClick={() => {
+                navigate(corpus_exit_path); // CentralRouteManager will clear openedCorpus
+              }}
+              title={`Back to ${corpus_exit_label}`}
+            >
+              <ArrowLeft />
+            </MobileBackButton>
+            <SearchBarContainer>
+              <CreateAndSearchBar
+                onChange={handleAnalysisSearchChange}
+                actions={corpus_actions}
+                placeholder="Search for analyses..."
+                value={analysesSearchCache}
+                filters={
+                  <>
+                    <FilterToCorpusActionOutputs />
+                    <FilterToAnalysesSelector corpus={opened_corpus} />
+                  </>
+                }
+              />
+            </SearchBarContainer>
+          </SearchBarWithNav>
+        ) : (
+          // Default search bar for any other views (like settings)
+          <CreateAndSearchBar
+            onChange={() => {}}
+            actions={[]}
+            placeholder="Search..."
+            value=""
+          />
+        )
+      }
+      BreadCrumbs={null}
+    >
+      <ImportCorpusModal />
+      {content}
+    </CardLayout>
+  );
+};

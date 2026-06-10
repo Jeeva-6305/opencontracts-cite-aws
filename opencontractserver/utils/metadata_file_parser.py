@@ -1,0 +1,241 @@
+"""
+Parser for document metadata files in ZIP imports.
+
+This module parses CSV files that provide metadata for documents
+in a ZIP archive. The metadata is applied during document import.
+
+CSV Format:
+-----------
+source_path,title,description
+/contracts/master.pdf,Master Agreement,The main services contract
+/contracts/amendment.pdf,Amendment #1,
+
+Columns:
+- source_path: Path to document (relative to zip root) - REQUIRED
+- title: Document title (optional, overrides filename-based title)
+- description: Document description (optional)
+
+Notes:
+- Paths use same normalization as relationships.csv
+- Empty values are ignored (don't override defaults)
+- Header row is required
+- Columns can be omitted entirely if not needed
+"""
+
+import csv
+import logging
+from dataclasses import dataclass, field
+from io import StringIO
+from typing import Optional
+from zipfile import ZipFile
+
+from opencontractserver.utils.relationship_file_parser import normalize_path
+
+logger = logging.getLogger(__name__)
+
+# Valid metadata file names (checked in order)
+METADATA_FILE_NAMES = [
+    "meta.csv",
+    "META.csv",
+    "metadata.csv",
+    "METADATA.csv",
+]
+
+
+@dataclass
+class DocumentMetadata:
+    """Metadata for a single document."""
+
+    source_path: str  # Normalized path (with leading /)
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+
+@dataclass
+class MetadataFileParseResult:
+    """Result of parsing a metadata file."""
+
+    is_valid: bool
+    metadata: dict[str, DocumentMetadata] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+def detect_metadata_file(zip_file: ZipFile) -> Optional[str]:
+    """
+    Detect if zip contains a metadata file.
+
+    Args:
+        zip_file: Open ZipFile object to search in
+
+    Returns:
+        Filename if found, None otherwise.
+        Checks filenames in priority order.
+    """
+    namelist = zip_file.namelist()
+    for name in METADATA_FILE_NAMES:
+        if name in namelist:
+            return name
+    return None
+
+
+def is_metadata_file(path: str) -> bool:
+    """
+    Check if a path is a metadata file at the root.
+
+    Args:
+        path: File path within the zip
+
+    Returns:
+        True if this is a recognized metadata file at root level
+    """
+    # Must be at root (no directory separators)
+    if "/" in path:
+        return False
+    return path in METADATA_FILE_NAMES
+
+
+def parse_metadata_file(
+    zip_file: ZipFile,
+    filename: str,
+) -> MetadataFileParseResult:
+    """
+    Parse a metadata CSV file from a zip archive.
+
+    Args:
+        zip_file: Open ZipFile object
+        filename: Name of the metadata file within the zip
+
+    Returns:
+        MetadataFileParseResult with parsed metadata and any errors/warnings
+    """
+    try:
+        with zip_file.open(filename) as f:
+            content = f.read().decode("utf-8")
+    except Exception as e:
+        logger.error(f"Failed to read metadata file '{filename}': {e}")
+        return MetadataFileParseResult(
+            is_valid=False,
+            errors=[f"Could not read metadata file: {str(e)}"],
+        )
+
+    return parse_csv_metadata(content)
+
+
+def parse_csv_metadata(content: str) -> MetadataFileParseResult:
+    """
+    Parse CSV format metadata content.
+
+    Expected columns:
+    - source_path (required)
+    - title (optional)
+    - description (optional)
+
+    Args:
+        content: CSV file content as string
+
+    Returns:
+        MetadataFileParseResult with parsed metadata keyed by normalized path
+    """
+    result = MetadataFileParseResult(is_valid=True)
+
+    if not content.strip():
+        result.warnings.append("Metadata file is empty")
+        return result
+
+    try:
+        reader = csv.DictReader(StringIO(content))
+
+        # Validate required columns exist
+        if reader.fieldnames is None:
+            result.is_valid = False
+            result.errors.append("CSV file has no header row")
+            return result
+
+        fieldnames_lower = [f.lower().strip() for f in reader.fieldnames]
+
+        if "source_path" not in fieldnames_lower:
+            result.is_valid = False
+            result.errors.append("Missing required column: source_path")
+            return result
+
+        # Build column name mapping (handle case variations)
+        col_map = {}
+        for original in reader.fieldnames:
+            lower = original.lower().strip()
+            col_map[lower] = original
+
+        # Check which optional columns are present
+        has_title = "title" in fieldnames_lower
+        has_description = "description" in fieldnames_lower
+
+        if not has_title and not has_description:
+            result.warnings.append(
+                "Metadata file has no title or description columns - no metadata will be applied"
+            )
+
+        # Parse rows
+        for row_num, row in enumerate(reader, start=2):  # Start at 2 (header is row 1)
+            try:
+                # Get source path
+                source_path = row.get(col_map.get("source_path", ""), "").strip()
+
+                # Skip empty rows
+                if not source_path:
+                    continue
+
+                # Check for path traversal
+                if ".." in source_path:
+                    result.errors.append(
+                        f"Row {row_num}: Path traversal not allowed in source_path"
+                    )
+                    continue
+
+                # Normalize path
+                normalized_path = normalize_path(source_path)
+
+                # Get optional fields (empty string = None)
+                title = None
+                description = None
+
+                if has_title:
+                    title_val = row.get(col_map.get("title", ""), "").strip()
+                    if title_val:
+                        title = title_val
+
+                if has_description:
+                    desc_val = row.get(col_map.get("description", ""), "").strip()
+                    if desc_val:
+                        description = desc_val
+
+                # Only add if there's at least one metadata value
+                if title is not None or description is not None:
+                    # Warn if duplicate path (later entries override)
+                    if normalized_path in result.metadata:
+                        result.warnings.append(
+                            f"Row {row_num}: Duplicate path '{source_path}' - "
+                            "later entry will override"
+                        )
+
+                    result.metadata[normalized_path] = DocumentMetadata(
+                        source_path=normalized_path,
+                        title=title,
+                        description=description,
+                    )
+
+            except Exception as e:
+                result.warnings.append(f"Row {row_num}: Error parsing row: {str(e)}")
+
+    except csv.Error as e:
+        result.is_valid = False
+        result.errors.append(f"CSV parsing error: {str(e)}")
+    except Exception as e:
+        result.is_valid = False
+        result.errors.append(f"Unexpected error parsing CSV: {str(e)}")
+
+    logger.info(
+        f"Parsed metadata file: {len(result.metadata)} documents with metadata, "
+        f"{len(result.errors)} errors, {len(result.warnings)} warnings"
+    )
+
+    return result

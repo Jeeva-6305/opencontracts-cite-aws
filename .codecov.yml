@@ -1,0 +1,121 @@
+codecov:
+  require_ci_to_pass: yes
+  notify:
+    # Coverage uploads arrive from three independent workflows (backend.yml,
+    # frontend.yml, frontend-e2e.yml) with staggered finish times, and any
+    # subset may skip due to path filters. manual_trigger suppresses auto-
+    # notifications so Codecov only fires status/comments once the
+    # codecov-notify.yml workflow calls send-notifications after every
+    # upload-producing workflow has finished for this SHA.
+    manual_trigger: true
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+
+  status:
+    project:
+      default:
+        target: auto
+        # informational: true forces the status to always post, even
+        # without a baseline on main. Once a baseline is established,
+        # this can be removed and the status will start gating PRs.
+        informational: true
+    patch:
+      default:
+        target: auto
+    changes: false
+
+flags:
+  backend:
+    paths:
+      - opencontractserver/
+      - config/
+    carryforward: true
+  frontend-unit:
+    paths:
+      - frontend/src/
+    carryforward: true
+  frontend-component:
+    paths:
+      - frontend/src/
+    carryforward: true
+  frontend-e2e:
+    paths:
+      - frontend/src/
+    carryforward: true
+  # Merged frontend flag that the README badge reads. Populated by tagging
+  # each per-suite upload (`frontend-unit`, `frontend-component`,
+  # `frontend-e2e`) with `frontend` as an additional flag in its workflow,
+  # so Codecov aggregates the union of the three uploads server-side.
+  # `carryforward: true` is load-bearing — a backend-only commit path-filters
+  # all three producing workflows out, so without carryforward the badge
+  # would drop to "unknown" on those commits; with it, the flag reuses the
+  # last known coverage from the parent commit. Intentionally does NOT
+  # match the `frontend-.*` regex used by the component_management block
+  # below, so the `frontend` component keeps aggregating only the three
+  # per-suite flags and doesn't double-count this merged flag.
+  frontend:
+    paths:
+      - frontend/src/
+    carryforward: true
+  backend-e2e:
+    paths:
+      - opencontractserver/
+      - config/
+    carryforward: true
+
+parsers:
+  gcov:
+    branch_detection:
+      conditional: yes
+      loop: yes
+      method: no
+      macro: no
+
+comment:
+  layout: "reach,diff,flags,components,files,footer"
+  behavior: default
+  require_changes: no
+
+# Components group flags into logical areas for reporting and PR status.
+# Flags alone can't express "frontend union" because the three frontend
+# flags overlap on the same paths. Components merge them so PR comments
+# and the Codecov UI show a single backend number and a single frontend
+# number instead of five flag numbers that users must mentally combine.
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        threshold: 1%
+      - type: patch
+        target: auto
+        threshold: 1%
+  individual_components:
+    - component_id: backend
+      name: Backend
+      paths:
+        - opencontractserver/**
+        - config/**
+      flag_regexes:
+        - backend.*
+    - component_id: frontend
+      name: Frontend
+      paths:
+        - frontend/src/**
+      flag_regexes:
+        - frontend-.*
+
+ignore:
+  - "opencontractserver/tasks/data_extract_tasks.py"
+  - "opencontractserver/tests/**"
+  - "**/migrations/**"
+  - "opencontractserver/**/migrations/*.py"
+  - "opencontractserver/*/migrations/*.py"
+  - "config/settings/test*.py"
+  - "frontend/src/**/*.test.{ts,tsx}"
+  - "frontend/src/setupTests.ts"
+  - "frontend/tests/**"
+  - "frontend/*.config.ts"

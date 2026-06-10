@@ -1,0 +1,117 @@
+volumes:
+  test_postgres_data: {}
+  test_postgres_data_backups: {}
+
+services:
+
+  vector-embedder:
+    image: ghcr.io/jsv4/vectorembeddermicroservice:latest
+    # build:
+    #   context: .
+    #   dockerfile: ./compose/local/vector-embedder/Dockerfile
+    container_name: vector-embedder
+    environment:
+      PORT: 8000
+      TRANSFORMERS_OFFLINE: 1
+      HF_DATASETS_OFFLINE: 1
+
+  multimodal-embedder:
+    image: ghcr.io/jsv4/vectorembeddermicroservice-multimodal:latest
+    container_name: multimodal-embedder
+    environment:
+      PORT: 8000
+      TRANSFORMERS_OFFLINE: 1
+      HF_DATASETS_OFFLINE: 1
+      API_KEY: abc123
+
+  docling-parser:
+    image: jscrudato/docsling-local
+    container_name: docling-parser
+
+  docxodus-parser:
+    # The frontend WASM (docxodus in package.json) and this microservice
+    # must use the same Docxodus version for character offset alignment.
+    image: ghcr.io/open-source-legal/docxodus-service:1.1.0-docxodus5.4.2
+    container_name: docxodus-parser
+
+  django: &django
+    build:
+      context: .
+      args:
+        - GITHUB_ACTIONS=${GITHUB_ACTIONS:-true}
+      dockerfile: ./compose/local/django/Dockerfile
+    image: opencontractserver_local_django
+    container_name: django
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      vector-embedder:
+        condition: service_started
+      # Note: celeryworker removed from here to avoid circular dependency
+      docling-parser:
+        condition: service_started
+      docxodus-parser:
+        condition: service_started
+        required: false
+      multimodal-embedder:
+        condition: service_started
+    volumes:
+      - .:/app:z
+    env_file:
+      - ./.envs/.test/.django
+      - ./.envs/.test/.postgres
+    ports:
+      - "8000:8000"
+    command: /start
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./compose/production/postgres/Dockerfile
+    image: opencontractserver_production_postgres
+    # 256m is sufficient for test workloads; production uses 4g for HNSW builds
+    shm_size: '256m'
+    volumes:
+      - test_postgres_data:/var/lib/postgresql/data:Z
+      - test_postgres_data_backups:/backups:z
+    env_file:
+      - ./.envs/.test/.postgres
+    # Shared settings (shared_preload_libraries, HNSW, I/O tuning) are in
+    # compose/postgres/shared.conf and injected by docker-entrypoint-wrapper.sh.
+    # Only per-environment memory settings remain here.
+    command: >
+      postgres
+      -c shared_buffers=512MB
+      -c maintenance_work_mem=256MB
+      -c effective_cache_size=2GB
+      -c work_mem=16MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oc_user -d opencontractserver"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:6
+    container_name: redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  celeryworker:
+    <<: *django
+    image: opencontractserver_local_celeryworker
+    container_name: celeryworker
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports: []
+    command: /start-celeryworker

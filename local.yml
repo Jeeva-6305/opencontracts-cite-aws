@@ -1,0 +1,249 @@
+volumes:
+  local_postgres_data: {}
+  local_postgres_data_backups: {}
+
+services:
+  django: &django
+    build:
+      context: .
+      args:
+        - GITHUB_ACTIONS
+      dockerfile: ./compose/local/django/Dockerfile
+      # Pull pre-built layers from ghcr (populated by the backend CI on every
+      # main-branch push — see .github/workflows/backend.yml). Cuts a fresh
+      # ``docker compose -f local.yml build`` from ~5-10 min to ~30-60 s on
+      # cache hit. Requires ``DOCKER_BUILDKIT=1`` (default in modern docker)
+      # and authentication to ghcr.io:
+      #   echo $GITHUB_TOKEN | docker login ghcr.io -u <username> --password-stdin
+      # or (with the GitHub CLI):
+      #   gh auth token | docker login ghcr.io -u <username> --password-stdin
+      # The cache image is public — auth is only needed if your docker is not
+      # already logged into ghcr; an unauthenticated pull falls back gracefully
+      # (cache miss, builds from scratch).
+      cache_from:
+        - type=registry,ref=ghcr.io/open-source-legal/opencontracts/django-local-cache:main
+    image: opencontractserver_local_django
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      vector-embedder:
+        condition: service_started
+      multimodal-embedder:
+        condition: service_started
+      docling-parser:
+        condition: service_started
+      docxodus-parser:
+        condition: service_started
+        required: false
+      privacy_filter:
+        condition: service_started
+        required: false
+    volumes:
+      - .:/app:z
+    env_file:
+      - ./.envs/.local/.django
+      - ./.envs/.local/.postgres
+    environment:
+      # Forwarded from the host so CI / local repro runs can flip on
+      # cassette record / replay without editing the env files. The
+      # WebSocket consumer (UnifiedAgentConsumer) runs the LLM agent
+      # in-process here under Daphne, so the django service needs the
+      # same VCR wiring as celeryworker (which handles task-side runs).
+      # See opencontractserver/utils/vcr_replay.py.
+      OC_LLM_VCR_MODE: ${OC_LLM_VCR_MODE-}
+      OC_LLM_VCR_CASSETTE: ${OC_LLM_VCR_CASSETTE-}
+      OC_LLM_VCR_DEBUG: ${OC_LLM_VCR_DEBUG-}
+    ports:
+      - "8000:8000"
+    command: /start
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/admin/login/\")'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./compose/production/postgres/Dockerfile
+    container_name: postgres
+    image: opencontractserver_production_postgres
+    shm_size: '2g'
+    volumes:
+      - local_postgres_data:/var/lib/postgresql/data:Z
+      - local_postgres_data_backups:/backups:z
+    env_file:
+      - ./.envs/.local/.postgres
+    # Shared settings (shared_preload_libraries, HNSW, I/O tuning) are in
+    # compose/postgres/shared.conf and injected by docker-entrypoint-wrapper.sh.
+    # Only per-environment memory settings remain here.
+    command: >
+      postgres
+      -c shared_buffers=512MB
+      -c maintenance_work_mem=256MB
+      -c effective_cache_size=2GB
+      -c work_mem=16MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:6
+    container_name: redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  docling-parser:
+    image: jscrudato/docsling-local
+    container_name: docling-parser
+
+  docxodus-parser:
+    # The frontend WASM (docxodus in package.json) and this microservice
+    # must use the same Docxodus version for character offset alignment.
+    image: ghcr.io/open-source-legal/docxodus-service:1.1.0-docxodus5.4.2
+    container_name: docxodus-parser
+
+  # API_KEY values below are LOCAL DEVELOPMENT ONLY placeholders.  Override
+  # via environment / .env before exposing these services on any network
+  # other than the local docker bridge.
+  vector-embedder:
+    image: ghcr.io/jsv4/vectorembeddermicroservice:latest
+    container_name: vector-embedder
+    environment:
+      PORT: 8000
+      TRANSFORMERS_OFFLINE: 1
+      HF_DATASETS_OFFLINE: 1
+      API_KEY: abc123  # local-only placeholder; override before deploying
+
+  multimodal-embedder:
+    image: ghcr.io/jsv4/vectorembeddermicroservice-multimodal:latest
+    container_name: multimodal-embedder
+    environment:
+      PORT: 8000
+      TRANSFORMERS_OFFLINE: 1
+      HF_DATASETS_OFFLINE: 1
+      API_KEY: abc123  # local-only placeholder; override before deploying
+
+  # API_KEYS value below is a LOCAL DEVELOPMENT ONLY placeholder; override via
+  # environment / .env before exposing the service outside the local docker
+  # bridge. The image bakes the model weights and runs CPU-only.
+  # No ``ports`` mapping: reachable only over the docker bridge from django /
+  # celeryworker (which is the only intended access pattern). To smoke-test
+  # from the host, exec into the django container and curl
+  # ``http://privacy_filter:8000/v1/detect``.
+  privacy_filter:
+    image: ghcr.io/open-source-legal/privacy-filter:latest
+    container_name: privacy_filter
+    environment:
+      API_KEYS: dev-only-not-secret
+      MAX_INPUT_CHARS: "50000"
+      CORS_ORIGINS: ""
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=2).status == 200 else 1)\""
+      interval: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  celeryworker:
+    image: opencontractserver_local_django
+    container_name: celeryworker
+    depends_on:
+      django:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      docling-parser:
+        condition: service_started
+      docxodus-parser:
+        condition: service_started
+        required: false
+      privacy_filter:
+        condition: service_started
+        required: false
+    volumes:
+      - .:/app:z
+    env_file:
+      - ./.envs/.local/.django
+      - ./.envs/.local/.postgres
+    environment:
+      # Optional VCR.py wrapper for the LLM agent in doc_extract_query_task.
+      # Forwarded from the host so CI / local repro runs can flip on
+      # cassette record / replay without editing the env files. See
+      # opencontractserver/utils/vcr_replay.py.
+      OC_LLM_VCR_MODE: ${OC_LLM_VCR_MODE-}
+      OC_LLM_VCR_CASSETTE: ${OC_LLM_VCR_CASSETTE-}
+      OC_LLM_VCR_DEBUG: ${OC_LLM_VCR_DEBUG-}
+    command: /app/compose/local/django/celery/worker/start
+
+
+  celerybeat:
+    image: opencontractserver_local_django
+    container_name: celerybeat
+    depends_on:
+      django:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      docling-parser:
+        condition: service_started
+      docxodus-parser:
+        condition: service_started
+        required: false
+    volumes:
+      - .:/app:z
+    env_file:
+      - ./.envs/.local/.django
+      - ./.envs/.local/.postgres
+    command: /start-celerybeat
+
+  flower:
+    <<: *django
+    image: opencontractserver_local_flower
+    container_name: flower
+    depends_on:
+      django:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5555:5555"
+    command: /start-flower
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5555/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  frontend:
+      build:
+        context: ./frontend
+        dockerfile: ./Dockerfile
+      image: opencontractserver_local_frontend
+      container_name: frontend
+      depends_on:
+        - django
+      env_file:
+      - ./.envs/.local/.frontend
+      ports:
+        - "3000:3000"
+      profiles:
+        - "fullstack"

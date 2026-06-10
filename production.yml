@@ -1,0 +1,164 @@
+volumes:
+  production_postgres_data: {}
+  production_postgres_data_backups: {}
+  production_traefik: {}
+
+services:
+  migrate:
+    build:
+      context: .
+      dockerfile: ./compose/production/django/Dockerfile
+      # Same image + same cache_from as the ``django`` service below (they
+      # share the build target). Wired now so once the prod cache CI lands,
+      # this service automatically benefits too.
+      cache_from:
+        - type=registry,ref=ghcr.io/open-source-legal/opencontracts/django-production-cache:main
+    image: opencontractserver_production_django
+    depends_on:
+      - postgres
+    env_file:
+      - ./.envs/.production/.django
+      - ./.envs/.production/.postgres
+    command: /bin/bash -c "python manage.py migrate --noinput && python manage.py migrate_pipeline_settings --sync-preferences --init-only && python manage.py migrate_pipeline_settings"
+    profiles:
+      - migrate
+
+  django: &django
+    build:
+      context: .
+      dockerfile: ./compose/production/django/Dockerfile
+      # Wired up for future use: a follow-up CI job will publish a production
+      # layer cache to ghcr (this Dockerfile is distinct from the local/test
+      # one and needs its own cache scope). Until that job lands this is a
+      # no-op miss — builds proceed normally with no cache effect.
+      # See compose/local/django/Dockerfile's local.yml wiring for the working
+      # local-image example.
+      cache_from:
+        - type=registry,ref=ghcr.io/open-source-legal/opencontracts/django-production-cache:main
+    image: opencontractserver_production_django
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      vector-embedder:
+        condition: service_started
+      docling-parser:
+        condition: service_started
+        required: false
+      docxodus-parser:
+        condition: service_started
+        required: false
+      privacy_filter:
+        condition: service_started
+        # Opt-in service: existing deployments that don't run a privacy
+        # filter must still be able to start django / celeryworker.
+        # When PRIVACY_FILTER_URL is unset, the scan_and_annotate_pii
+        # tool raises a descriptive RuntimeError instead of breaking
+        # the whole stack.
+        required: false
+    env_file:
+      - ./.envs/.production/.django
+      - ./.envs/.production/.postgres
+    command: /bin/bash -c "echo 'Skipping collectstatic' && daphne -b 0.0.0.0 -p 5000 --websocket_timeout $$DJANGO_WORKER_TIMEOUT config.asgi:application"
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./compose/production/postgres/Dockerfile
+    image: opencontractserver_production_postgres
+    shm_size: '4g'
+    volumes:
+      - production_postgres_data:/var/lib/postgresql/data:Z
+      - production_postgres_data_backups:/backups:z
+    env_file:
+      - ./.envs/.production/.postgres
+    # Shared settings (shared_preload_libraries, HNSW, I/O tuning) are in
+    # compose/postgres/shared.conf and injected by docker-entrypoint-wrapper.sh.
+    # Only per-environment memory settings remain here.
+    # NOTE: For the initial HNSW index build (migration 0063), temporarily
+    # increase maintenance_work_mem to 2GB for faster index creation:
+    #   -c maintenance_work_mem=2GB
+    # Revert to 512MB after the migration completes.
+    command: >
+      postgres
+      -c shared_buffers=1GB
+      -c maintenance_work_mem=512MB
+      -c effective_cache_size=4GB
+      -c work_mem=128MB
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ./Dockerfile
+    image: opencontractserver_production_frontend
+    container_name: frontend
+    depends_on:
+      - django
+    env_file:
+      - ./.envs/.production/.frontend
+
+  traefik:
+    build:
+      context: .
+      dockerfile: ./compose/production/traefik/Dockerfile
+    image: opencontractserver_production_traefik
+    depends_on:
+      - django
+    volumes:
+      - production_traefik:/etc/traefik/acme:z
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+      - "0.0.0.0:5555:5555"
+
+  redis:
+    image: redis:6
+
+  vector-embedder:
+    image: jscrudato/vector-embedder-microservice
+    container_name: vector-embedder
+    environment:
+      PORT: 8000
+
+  docling-parser:
+    image: jscrudato/docsling-local
+    container_name: docling-parser
+
+  docxodus-parser:
+    # The frontend WASM (docxodus in package.json) and this microservice
+    # must use the same Docxodus version for character offset alignment.
+    image: ghcr.io/open-source-legal/docxodus-service:1.1.0-docxodus5.4.2
+    container_name: docxodus-parser
+
+  privacy_filter:
+    image: ghcr.io/open-source-legal/privacy-filter:latest
+    container_name: privacy_filter
+    # Empty default so existing deployments that don't run the privacy
+    # filter can still `docker compose -f production.yml up` without
+    # exporting PRIVACY_FILTER_API_KEY. Compose substitutes env vars at
+    # PARSE time, so the previous `${...:?...}` required-form aborted the
+    # whole stack — not just this service — when the var was unset, which
+    # contradicted the `required: false` dependency declared above.
+    environment:
+      API_KEYS: ${PRIVACY_FILTER_API_KEY:-}
+      MAX_INPUT_CHARS: "50000"
+      CORS_ORIGINS: ""
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=2).status == 200 else 1)\""
+      interval: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  celeryworker:
+    <<: *django
+    image: opencontractserver_production_celeryworker
+    command: /start-celeryworker
+
+  celerybeat:
+    <<: *django
+    image: opencontractserver_production_celerybeat
+    command: /start-celerybeat
