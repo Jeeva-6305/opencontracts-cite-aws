@@ -67,6 +67,29 @@ set -a
 source "$ENV_FILE"
 set +a
 
+echo "========== Install pgvector extension =========="
+
+dnf install -y git gcc make postgresql15-devel postgresql15-server || true
+
+PG_CONFIG=$(command -v pg_config || find /usr -name pg_config | head -n 1)
+
+if [ -z "$PG_CONFIG" ]; then
+  echo "ERROR: pg_config not found. PostgreSQL development package is missing."
+  exit 1
+fi
+
+echo "Using PG_CONFIG=$PG_CONFIG"
+
+if [ ! -f "/usr/share/pgsql/extension/vector.control" ]; then
+  rm -rf /tmp/pgvector
+  git clone https://github.com/pgvector/pgvector.git /tmp/pgvector
+  cd /tmp/pgvector
+  make PG_CONFIG="$PG_CONFIG"
+  make install PG_CONFIG="$PG_CONFIG"
+fi
+
+sudo -u postgres psql -d opencontractserver -c "CREATE EXTENSION IF NOT EXISTS vector;"
+cd "$APP_DIR"
 python manage.py check || true
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput || true
