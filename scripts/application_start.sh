@@ -20,13 +20,29 @@ source venv/bin/activate
 
 echo "Installing backend requirements..."
 pip install --upgrade pip
-if [ -f requirements.txt ]; then
-  pip install -r requirements.txt
+
+REQ_FILE=""
+
+if [ -f "$BACKEND_DIR/requirements.txt" ]; then
+  REQ_FILE="$BACKEND_DIR/requirements.txt"
+elif [ -f "$BACKEND_DIR/requirements/production.txt" ]; then
+  REQ_FILE="$BACKEND_DIR/requirements/production.txt"
+elif [ -f "$BACKEND_DIR/requirements/base.txt" ]; then
+  REQ_FILE="$BACKEND_DIR/requirements/base.txt"
+elif [ -f "$BACKEND_DIR/requirements/local.txt" ]; then
+  REQ_FILE="$BACKEND_DIR/requirements/local.txt"
 else
-  REQ_FILE=$(find "$APP_DIR" -maxdepth 4 -name requirements.txt | head -n 1)
-  pip install -r "$REQ_FILE"
+  REQ_FILE=$(find "$APP_DIR" -maxdepth 6 \( -name "production.txt" -o -name "base.txt" -o -name "local.txt" -o -name "requirements.txt" \) | head -n 1)
 fi
 
+echo "Using requirements file: $REQ_FILE"
+
+if [ -z "$REQ_FILE" ]; then
+  echo "ERROR: No requirements file found"
+  exit 1
+fi
+
+pip install -r "$REQ_FILE"
 pip install gunicorn psycopg2-binary
 
 echo "Running Django migrations..."

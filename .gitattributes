@@ -19,3 +19,4 @@ docs/assets/images/screenshots/auto/** merge=ours -diff -text
 # touch this file at all; the union driver is a safety net for direct edits and
 # for the existing in-flight PRs.
 CHANGELOG.md merge=union
+*.sh text eol=lf
