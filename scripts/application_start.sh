@@ -6,63 +6,55 @@ ENV_FILE="/etc/opencontracts.env"
 
 echo "========== ApplicationStart started =========="
 
-# Load environment variables
-if [ -f "$ENV_FILE" ]; then
-  set -a
-  source "$ENV_FILE"
-  set +a
+cd "$APP_DIR"
+
+echo "========== Server dependency check =========="
+dnf install -y gcc python3-devel postgresql15-devel || true
+
+echo "========== Ensure environment file =========="
+if [ ! -f "$ENV_FILE" ]; then
+  SECRET=$(python3 -c 'import secrets; print("django-insecure-"+secrets.token_urlsafe(50))')
+
+  cat > "$ENV_FILE" <<EOF
+SECRET_KEY=$SECRET
+DJANGO_SECRET_KEY=$SECRET
+DEBUG=False
+ALLOWED_HOSTS=65.0.107.153,localhost,127.0.0.1
+DJANGO_ALLOWED_HOSTS=65.0.107.153,localhost,127.0.0.1
+CSRF_TRUSTED_ORIGINS=http://65.0.107.153
+CORS_ALLOWED_ORIGINS=http://65.0.107.153
+DATABASE_URL=postgres://opencontractsuser:Opencontracts%40123@127.0.0.1:5432/opencontractserver
+POSTGRES_DB=opencontractserver
+POSTGRES_USER=opencontractsuser
+POSTGRES_PASSWORD=Opencontracts@123
+POSTGRES_HOST=127.0.0.1
+POSTGRES_PORT=5432
+REDIS_URL=redis://127.0.0.1:6379/0
+CELERY_BROKER_URL=redis://127.0.0.1:6379/0
+CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/0
+EOF
 fi
 
-# Fix Windows line endings
-find "$APP_DIR/scripts" -type f -name "*.sh" -exec sed -i 's/\r$//' {} \; || true
+echo "========== Fix psycopg dependency =========="
+sed -i 's/psycopg2==2.9.12/psycopg2-binary==2.9.12/g' requirements/production.txt || true
 
 echo "========== Backend setup =========="
-
-BACKEND_DIR=$(find "$APP_DIR" -maxdepth 5 -name manage.py -printf '%h\n' | head -n 1)
-
-if [ -z "$BACKEND_DIR" ]; then
-  echo "ERROR: manage.py not found"
-  exit 1
-fi
-
-echo "Backend directory: $BACKEND_DIR"
-cd "$BACKEND_DIR"
-
 python3 -m venv venv
 source venv/bin/activate
 
 pip install --upgrade pip wheel setuptools
+pip install --no-cache-dir -r requirements/production.txt
+pip install --no-cache-dir django-extensions gunicorn psycopg2-binary
 
-if [ -f "requirements/production.txt" ]; then
-  pip install -r requirements/production.txt
-elif [ -f "requirements/local.txt" ]; then
-  pip install -r requirements/local.txt
-elif [ -f "requirements/base.txt" ]; then
-  pip install -r requirements/base.txt
-elif [ -f "requirements.txt" ]; then
-  pip install -r requirements.txt
-else
-  echo "ERROR: requirements file not found"
-  exit 1
-fi
+set -a
+source "$ENV_FILE"
+set +a
 
-pip install gunicorn psycopg2-binary whitenoise django-cors-headers || true
-
-echo "Running Django migrations..."
+python manage.py check || true
 python manage.py migrate --noinput || true
-
-echo "Collecting static files..."
 python manage.py collectstatic --noinput || true
 
-WSGI_MODULE=$(find . -path "*/wsgi.py" | head -n 1 | sed 's#^\./##' | sed 's#/#.#g' | sed 's#.py$##')
-
-if [ -z "$WSGI_MODULE" ]; then
-  echo "ERROR: wsgi.py not found"
-  exit 1
-fi
-
-echo "WSGI module: $WSGI_MODULE"
-
+echo "========== Create backend service =========="
 cat > /etc/systemd/system/opencontracts-backend.service <<EOF
 [Unit]
 Description=OpenContracts Django Backend
@@ -71,9 +63,9 @@ After=network.target postgresql.service redis6.service
 [Service]
 User=ec2-user
 Group=ec2-user
-WorkingDirectory=$BACKEND_DIR
-EnvironmentFile=$ENV_FILE
-ExecStart=$BACKEND_DIR/venv/bin/gunicorn $WSGI_MODULE:application --bind 0.0.0.0:8000 --workers 2 --timeout 120
+WorkingDirectory=/var/www/opencontracts
+EnvironmentFile=/etc/opencontracts.env
+ExecStart=/var/www/opencontracts/venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 120
 Restart=always
 RestartSec=5
 
@@ -86,21 +78,7 @@ systemctl enable opencontracts-backend
 systemctl restart opencontracts-backend
 
 echo "========== Frontend setup =========="
-
-FRONTEND_DIR=$(find "$APP_DIR" -path "*/node_modules" -prune -o -name package.json -printf '%h\n' | while read dir; do
-  if grep -q '"build"' "$dir/package.json"; then
-    echo "$dir"
-    break
-  fi
-done)
-
-if [ -z "$FRONTEND_DIR" ]; then
-  echo "ERROR: frontend package.json with build script not found"
-  exit 1
-fi
-
-echo "Frontend directory: $FRONTEND_DIR"
-cd "$FRONTEND_DIR"
+cd /var/www/opencontracts/frontend
 
 cat > .env.production <<EOF
 REACT_APP_USE_AUTH0=false
@@ -113,24 +91,22 @@ VITE_USE_ANALYZERS=true
 VITE_ALLOW_IMPORTS=true
 EOF
 
-npm install
+npm install --legacy-peer-deps
 npm run build
 
+echo "========== Copy frontend build =========="
 rm -rf /usr/share/nginx/html/*
 
-if [ -d "dist" ]; then
+if [ -d dist ]; then
   cp -r dist/* /usr/share/nginx/html/
-elif [ -d "build" ]; then
+elif [ -d build ]; then
   cp -r build/* /usr/share/nginx/html/
 else
-  echo "ERROR: frontend build output folder not found"
+  echo "ERROR: frontend build output not found"
   exit 1
 fi
 
 echo "========== Nginx setup =========="
-
-rm -f /etc/nginx/conf.d/default.conf || true
-
 cat > /etc/nginx/conf.d/opencontracts.conf <<EOF
 server {
     listen 80;
@@ -163,14 +139,6 @@ server {
         proxy_pass http://127.0.0.1:8000/graphql/;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-    }
-
-    location /static/ {
-        alias $BACKEND_DIR/staticfiles/;
-    }
-
-    location /media/ {
-        alias $BACKEND_DIR/media/;
     }
 }
 EOF
