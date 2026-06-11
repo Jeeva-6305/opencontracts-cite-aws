@@ -198,6 +198,33 @@ systemctl daemon-reload
 systemctl enable opencontracts-backend
 systemctl restart opencontracts-backend
 
+echo "========== Free disk space before frontend build =========="
+df -h
+df -i
+
+rm -rf /tmp/opencontracts-* || true
+rm -rf /tmp/yarn-* || true
+rm -rf /tmp/vite-* || true
+rm -rf /root/.npm || true
+rm -rf /root/.cache/yarn || true
+rm -rf /root/.cache/node || true
+rm -rf "$APP_DIR/frontend/node_modules" || true
+rm -rf "$APP_DIR/frontend/dist" || true
+rm -rf "$APP_DIR/frontend/build" || true
+rm -rf "$APP_DIR/.yarn-cache" || true
+rm -rf "$APP_DIR/.tmp" || true
+
+dnf clean all || true
+journalctl --vacuum-time=1d || true
+
+mkdir -p "$APP_DIR/.yarn-cache"
+mkdir -p "$APP_DIR/.tmp"
+chmod -R 777 "$APP_DIR/.yarn-cache" "$APP_DIR/.tmp"
+
+echo "Disk after cleanup:"
+df -h
+df -i
+
 echo "========== Frontend setup =========="
 cd "$APP_DIR/frontend"
 
@@ -232,56 +259,69 @@ import json
 p = Path("package.json")
 s = p.read_text()
 
-# Fix broken multiline script values if present
 s = s.replace('"lint": "prettier .\n--check --ignore-unknown"', '"lint": "prettier . --check --ignore-unknown"')
 s = s.replace('"prepare": "cd ..\n&& husky install frontend/.husky"', '"prepare": "echo skip husky"')
 s = s.replace('"prepare": "cd .. && husky install frontend/.husky"', '"prepare": "echo skip husky"')
 
 data = json.loads(s)
-
 data.setdefault("scripts", {})
 data["scripts"]["prepare"] = "echo skip husky"
-
-# For deployment, build real Vite frontend directly.
-# This avoids tsc blocking deployment due type-check-only errors.
 data["scripts"]["build"] = "node scripts/env.js && vite build"
 
 p.write_text(json.dumps(data, indent=2) + "\n")
 print("package.json patched successfully")
 PY
 
-echo "========== Clean old frontend dependencies =========="
-rm -rf node_modules
-rm -f package-lock.json
-rm -rf /tmp/opencontracts-yarn-cache
-mkdir -p /tmp/opencontracts-yarn-cache
-
 echo "========== Enable Yarn =========="
 corepack enable || true
 corepack prepare yarn@1.22.22 --activate || npm install -g yarn@1.22.22
-
 yarn --version
 
+echo "========== Configure Yarn cache/temp inside app dir =========="
 export NODE_OPTIONS="--max-old-space-size=2048"
-export YARN_CACHE_FOLDER=/tmp/opencontracts-yarn-cache
+export YARN_CACHE_FOLDER="$APP_DIR/.yarn-cache"
+export TMPDIR="$APP_DIR/.tmp"
+export TEMP="$APP_DIR/.tmp"
+export TMP="$APP_DIR/.tmp"
 export CI=false
 
+yarn config set cache-folder "$APP_DIR/.yarn-cache"
+yarn cache clean --all || true
+
+echo "Yarn cache:"
+yarn cache dir
+
 echo "========== Yarn install =========="
-yarn install --ignore-scripts --non-interactive --network-timeout 600000 --frozen-lockfile || \
-yarn install --ignore-scripts --non-interactive --network-timeout 600000
+yarn install \
+  --ignore-scripts \
+  --non-interactive \
+  --network-timeout 600000 \
+  --cache-folder "$APP_DIR/.yarn-cache" \
+  --verbose || {
+    echo "========== YARN INSTALL FAILED =========="
+    echo "Disk status:"
+    df -h
+    df -i
+    echo "Largest folders:"
+    du -h -x -d 1 / 2>/dev/null | sort -h | tail -20 || true
+    du -h -x -d 1 /var 2>/dev/null | sort -h | tail -20 || true
+    du -h -x -d 1 "$APP_DIR" 2>/dev/null | sort -h | tail -20 || true
+    exit 1
+  }
 
 echo "========== Verify frontend tools =========="
-ls -la node_modules/.bin | head || true
-
 if [ ! -x ./node_modules/.bin/vite ]; then
   echo "ERROR: vite not found after yarn install"
+  ls -la node_modules/.bin 2>/dev/null || true
   exit 1
 fi
 
 ./node_modules/.bin/vite --version
 
 echo "========== Frontend build =========="
-yarn buildecho "========== Copy frontend build =========="
+yarn build
+
+echo "========== Copy frontend build =========="
 rm -rf /usr/share/nginx/html/*
 
 if [ -d dist ]; then
