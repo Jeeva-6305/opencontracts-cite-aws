@@ -9,7 +9,7 @@ echo "========== ApplicationStart started =========="
 cd "$APP_DIR"
 
 echo "========== Install base packages =========="
-dnf install -y git gcc make curl nginx redis6
+dnf install -y git gcc make nginx redis6
 
 dnf install -y python3.11 python3.11-devel python3.11-pip || dnf install -y python3 python3-devel python3-pip
 
