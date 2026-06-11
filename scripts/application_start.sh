@@ -94,15 +94,19 @@ make install PG_CONFIG="$PG_CONFIG"
 
 cd "$APP_DIR"
 
-echo "========== Create database and pgvector extension =========="
+echo "========== Reset database for clean deployment =========="
+
 sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
-SELECT 'CREATE USER opencontractsuser WITH PASSWORD ''Opencontracts@123'''
-WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname='opencontractsuser')\gexec
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = 'opencontractserver'
+  AND pid <> pg_backend_pid();
 
-ALTER USER opencontractsuser WITH PASSWORD 'Opencontracts@123';
+DROP DATABASE IF EXISTS opencontractserver;
+DROP USER IF EXISTS opencontractsuser;
 
-SELECT 'CREATE DATABASE opencontractserver OWNER opencontractsuser'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname='opencontractserver')\gexec
+CREATE USER opencontractsuser WITH PASSWORD 'Opencontracts@123';
+CREATE DATABASE opencontractserver OWNER opencontractsuser;
 
 \c opencontractserver
 
@@ -110,6 +114,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 ALTER DATABASE opencontractserver OWNER TO opencontractsuser;
 GRANT ALL ON SCHEMA public TO opencontractsuser;
 SQL
+
 echo "========== Create environment file =========="
 cat > "$ENV_FILE" <<EOF
 SECRET_KEY=django-insecure-opencontracts-ec2-deploy-key
