@@ -34,8 +34,7 @@ echo "========== Install Amazon Linux PostgreSQL 15 and build pgvector =========
 systemctl stop postgresql-15 || true
 systemctl disable postgresql-15 || true
 
-dnf install -y postgresql15 postgresql15-server postgresql15-devel libpq-devel git gcc make
-
+dnf install -y --allowerasing postgresql15 postgresql15-server postgresql15-devel git gcc make
 if [ ! -f "/var/lib/pgsql/data/PG_VERSION" ]; then
   postgresql-setup --initdb
 fi
@@ -51,7 +50,7 @@ sed -i -E 's/^(host\s+all\s+all\s+::1\/128\s+).*/\1scram-sha-256/' "$PG_HBA"
 systemctl restart postgresql
 
 echo "========== Build and install pgvector =========="
-PG_CONFIG=$(command -v pg_config)
+PG_CONFIG=$(find /usr -type f -name pg_config -perm -111 2>/dev/null | head -n 1)
 
 if [ -z "$PG_CONFIG" ]; then
   echo "ERROR: pg_config not found even after installing libpq-devel"
