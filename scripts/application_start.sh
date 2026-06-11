@@ -201,7 +201,7 @@ systemctl restart opencontracts-backend
 echo "========== Frontend setup =========="
 cd "$APP_DIR/frontend"
 
-echo "Frontend path:"
+echo "Current frontend path:"
 pwd
 ls -la
 
@@ -228,7 +228,9 @@ fund=false
 audit=false
 EOF
 
+echo "========== Clean old npm files =========="
 rm -rf node_modules
+rm -rf package-lock.json
 rm -rf /tmp/opencontracts-npm-cache
 mkdir -p /tmp/opencontracts-npm-cache
 
@@ -237,22 +239,32 @@ export npm_config_legacy_peer_deps=true
 export npm_config_include=dev
 export npm_config_cache=/tmp/opencontracts-npm-cache
 export CI=false
+export HUSKY=0
+
+echo "========== Remove husky prepare script for deployment =========="
+npm pkg delete scripts.prepare || true
 
 echo "========== NPM install =========="
-npm install --legacy-peer-deps --include=dev --no-audit --no-fund --loglevel verbose 2>&1 | tee /tmp/opencontracts-npm-install.log || {
+npm install --legacy-peer-deps --include=dev --no-audit --no-fund 2>&1 | tee /tmp/opencontracts-npm-install.log || {
   echo "========== NPM INSTALL FAILED =========="
   cat /tmp/opencontracts-npm-install.log || true
+  echo "========== NPM DEBUG LOGS =========="
+  cat /tmp/opencontracts-npm-cache/_logs/*debug* 2>/dev/null || true
   cat /root/.npm/_logs/*debug* 2>/dev/null || true
   exit 1
 }
 
 echo "========== Verify TypeScript and Vite =========="
+ls -la node_modules/.bin || true
+
 if [ ! -x ./node_modules/.bin/tsc ]; then
-  npm install typescript --save-dev --legacy-peer-deps --no-audit --no-fund
+  echo "ERROR: tsc not found after npm install"
+  exit 1
 fi
 
 if [ ! -x ./node_modules/.bin/vite ]; then
-  npm install vite --save-dev --legacy-peer-deps --no-audit --no-fund
+  echo "ERROR: vite not found after npm install"
+  exit 1
 fi
 
 ./node_modules/.bin/tsc --version
@@ -262,10 +274,10 @@ echo "========== Frontend build =========="
 npm run build 2>&1 | tee /tmp/opencontracts-npm-build.log || {
   echo "========== NPM BUILD FAILED =========="
   cat /tmp/opencontracts-npm-build.log || true
+  cat /tmp/opencontracts-npm-cache/_logs/*debug* 2>/dev/null || true
   cat /root/.npm/_logs/*debug* 2>/dev/null || true
   exit 1
 }
-
 echo "========== Copy frontend build =========="
 rm -rf /usr/share/nginx/html/*
 
