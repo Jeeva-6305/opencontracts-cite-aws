@@ -8,7 +8,7 @@ EC2_IP="65.0.107.153"
 echo "========== ApplicationStart started =========="
 cd "$APP_DIR"
 
-echo "========== Stop old backend service if running =========="
+echo "========== Stop old backend service =========="
 systemctl stop opencontracts-backend || true
 
 echo "========== Install base packages =========="
@@ -30,7 +30,7 @@ fi
 node -v
 npm -v
 
-echo "========== Install Amazon Linux PostgreSQL 15 =========="
+echo "========== Install PostgreSQL 15 =========="
 systemctl stop postgresql-15 || true
 systemctl disable postgresql-15 || true
 
@@ -88,10 +88,9 @@ chmod +x "$PG_CONFIG" || true
 echo "Using PG_CONFIG=$PG_CONFIG"
 "$PG_CONFIG" --version
 
-echo "========== Verify pg_trgm extension file =========="
+echo "========== Verify pg_trgm =========="
 if [ ! -f "/usr/share/pgsql/extension/pg_trgm.control" ]; then
   echo "ERROR: pg_trgm.control missing"
-  echo "postgresql15-contrib package files:"
   rpm -ql postgresql15-contrib 2>/dev/null || true
   exit 1
 fi
@@ -106,7 +105,7 @@ make install PG_CONFIG="$PG_CONFIG"
 
 cd "$APP_DIR"
 
-echo "========== Verify vector extension file =========="
+echo "========== Verify pgvector =========="
 if [ ! -f "/usr/share/pgsql/extension/vector.control" ]; then
   echo "ERROR: vector.control missing after pgvector install"
   exit 1
@@ -202,6 +201,15 @@ systemctl restart opencontracts-backend
 echo "========== Frontend setup =========="
 cd "$APP_DIR/frontend"
 
+echo "Frontend path:"
+pwd
+ls -la
+
+if [ ! -f package.json ]; then
+  echo "ERROR: package.json not found inside frontend folder"
+  exit 1
+fi
+
 cat > .env.production <<EOF
 REACT_APP_USE_AUTH0=false
 REACT_APP_USE_ANALYZERS=true
@@ -221,16 +229,42 @@ audit=false
 EOF
 
 rm -rf node_modules
-npm cache clean --force
+rm -rf /tmp/opencontracts-npm-cache
+mkdir -p /tmp/opencontracts-npm-cache
 
 export NODE_OPTIONS="--max-old-space-size=2048"
 export npm_config_legacy_peer_deps=true
 export npm_config_include=dev
+export npm_config_cache=/tmp/opencontracts-npm-cache
 export CI=false
 
-npm install --legacy-peer-deps --include=dev
-npm install typescript vite --save-dev --legacy-peer-deps
-npm run build
+echo "========== NPM install =========="
+npm install --legacy-peer-deps --include=dev --no-audit --no-fund --loglevel verbose 2>&1 | tee /tmp/opencontracts-npm-install.log || {
+  echo "========== NPM INSTALL FAILED =========="
+  cat /tmp/opencontracts-npm-install.log || true
+  cat /root/.npm/_logs/*debug* 2>/dev/null || true
+  exit 1
+}
+
+echo "========== Verify TypeScript and Vite =========="
+if [ ! -x ./node_modules/.bin/tsc ]; then
+  npm install typescript --save-dev --legacy-peer-deps --no-audit --no-fund
+fi
+
+if [ ! -x ./node_modules/.bin/vite ]; then
+  npm install vite --save-dev --legacy-peer-deps --no-audit --no-fund
+fi
+
+./node_modules/.bin/tsc --version
+./node_modules/.bin/vite --version
+
+echo "========== Frontend build =========="
+npm run build 2>&1 | tee /tmp/opencontracts-npm-build.log || {
+  echo "========== NPM BUILD FAILED =========="
+  cat /tmp/opencontracts-npm-build.log || true
+  cat /root/.npm/_logs/*debug* 2>/dev/null || true
+  exit 1
+}
 
 echo "========== Copy frontend build =========="
 rm -rf /usr/share/nginx/html/*
