@@ -34,7 +34,8 @@ echo "========== Install Amazon Linux PostgreSQL 15 and build pgvector =========
 systemctl stop postgresql-15 || true
 systemctl disable postgresql-15 || true
 
-dnf install -y --allowerasing postgresql15 postgresql15-server postgresql15-devel git gcc make
+dnf install -y --allowerasing postgresql15 postgresql15-server postgresql15-devel postgresql15-server-devel git gcc make
+
 if [ ! -f "/var/lib/pgsql/data/PG_VERSION" ]; then
   postgresql-setup --initdb
 fi
@@ -50,24 +51,46 @@ sed -i -E 's/^(host\s+all\s+all\s+::1\/128\s+).*/\1scram-sha-256/' "$PG_HBA"
 systemctl restart postgresql
 
 echo "========== Build and install pgvector =========="
-PG_CONFIG=$(find /usr -type f -name pg_config -perm -111 2>/dev/null | head -n 1)
+
+PG_CONFIG=""
+
+for p in \
+  /usr/bin/pg_config \
+  /usr/pgsql-15/bin/pg_config \
+  /usr/lib64/pgsql/pg_config \
+  /usr/lib64/pgsql/postgresql15/bin/pg_config
+do
+  if [ -x "$p" ]; then
+    PG_CONFIG="$p"
+    break
+  fi
+done
 
 if [ -z "$PG_CONFIG" ]; then
-  echo "ERROR: pg_config not found even after installing libpq-devel"
+  PG_CONFIG=$(find /usr -type f -name pg_config 2>/dev/null | head -n 1)
+fi
+
+if [ -z "$PG_CONFIG" ]; then
+  echo "ERROR: pg_config not found"
+  echo "Installed PostgreSQL packages:"
+  rpm -qa | grep postgresql || true
+  echo "Files from postgresql devel packages:"
+  rpm -ql postgresql15-devel 2>/dev/null || true
+  rpm -ql postgresql15-server-devel 2>/dev/null || true
   exit 1
 fi
+
+chmod +x "$PG_CONFIG" || true
 
 echo "Using PG_CONFIG=$PG_CONFIG"
 "$PG_CONFIG" --version
 
-if [ ! -f "/usr/share/pgsql/extension/vector.control" ]; then
-  rm -rf /tmp/pgvector
-  git clone https://github.com/pgvector/pgvector.git /tmp/pgvector
-  cd /tmp/pgvector
-  make clean || true
-  make PG_CONFIG="$PG_CONFIG"
-  make install PG_CONFIG="$PG_CONFIG"
-fi
+rm -rf /tmp/pgvector
+git clone https://github.com/pgvector/pgvector.git /tmp/pgvector
+cd /tmp/pgvector
+make clean || true
+make PG_CONFIG="$PG_CONFIG"
+make install PG_CONFIG="$PG_CONFIG"
 
 cd "$APP_DIR"
 
