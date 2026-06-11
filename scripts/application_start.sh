@@ -8,6 +8,9 @@ EC2_IP="65.0.107.153"
 echo "========== ApplicationStart started =========="
 cd "$APP_DIR"
 
+echo "========== Stop old backend service if running =========="
+systemctl stop opencontracts-backend || true
+
 echo "========== Install base packages =========="
 dnf install -y git gcc make nginx redis6
 dnf install -y python3.11 python3.11-devel python3.11-pip || dnf install -y python3 python3-devel python3-pip
@@ -26,15 +29,18 @@ fi
 
 node -v
 npm -v
-echo "========== Install Amazon Linux PostgreSQL 15 and build pgvector =========="
 
-# Do NOT use PGDG repo on Amazon Linux 2023.
-# Use Amazon Linux packages + build pgvector from source.
-
+echo "========== Install Amazon Linux PostgreSQL 15 =========="
 systemctl stop postgresql-15 || true
 systemctl disable postgresql-15 || true
 
-dnf install -y --allowerasing postgresql15 postgresql15-server postgresql15-devel postgresql15-server-devel git gcc make
+dnf install -y --allowerasing \
+  postgresql15 \
+  postgresql15-server \
+  postgresql15-devel \
+  postgresql15-server-devel \
+  postgresql15-contrib \
+  git gcc make
 
 if [ ! -f "/var/lib/pgsql/data/PG_VERSION" ]; then
   postgresql-setup --initdb
@@ -48,10 +54,12 @@ PG_HBA="/var/lib/pgsql/data/pg_hba.conf"
 sed -i -E 's/^(host\s+all\s+all\s+127\.0\.0\.1\/32\s+).*/\1scram-sha-256/' "$PG_HBA"
 sed -i -E 's/^(host\s+all\s+all\s+::1\/128\s+).*/\1scram-sha-256/' "$PG_HBA"
 
+grep -q "127.0.0.1/32" "$PG_HBA" || echo "host all all 127.0.0.1/32 scram-sha-256" >> "$PG_HBA"
+grep -q "::1/128" "$PG_HBA" || echo "host all all ::1/128 scram-sha-256" >> "$PG_HBA"
+
 systemctl restart postgresql
 
-echo "========== Build and install pgvector =========="
-
+echo "========== Find pg_config =========="
 PG_CONFIG=""
 
 for p in \
@@ -72,19 +80,23 @@ fi
 
 if [ -z "$PG_CONFIG" ]; then
   echo "ERROR: pg_config not found"
-  echo "Installed PostgreSQL packages:"
   rpm -qa | grep postgresql || true
-  echo "Files from postgresql devel packages:"
-  rpm -ql postgresql15-devel 2>/dev/null || true
-  rpm -ql postgresql15-server-devel 2>/dev/null || true
   exit 1
 fi
 
 chmod +x "$PG_CONFIG" || true
-
 echo "Using PG_CONFIG=$PG_CONFIG"
 "$PG_CONFIG" --version
 
+echo "========== Verify pg_trgm extension file =========="
+if [ ! -f "/usr/share/pgsql/extension/pg_trgm.control" ]; then
+  echo "ERROR: pg_trgm.control missing"
+  echo "postgresql15-contrib package files:"
+  rpm -ql postgresql15-contrib 2>/dev/null || true
+  exit 1
+fi
+
+echo "========== Build and install pgvector =========="
 rm -rf /tmp/pgvector
 git clone https://github.com/pgvector/pgvector.git /tmp/pgvector
 cd /tmp/pgvector
@@ -94,8 +106,13 @@ make install PG_CONFIG="$PG_CONFIG"
 
 cd "$APP_DIR"
 
-echo "========== Reset database for clean deployment =========="
+echo "========== Verify vector extension file =========="
+if [ ! -f "/usr/share/pgsql/extension/vector.control" ]; then
+  echo "ERROR: vector.control missing after pgvector install"
+  exit 1
+fi
 
+echo "========== Reset database for clean deployment =========="
 sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
 SELECT pg_terminate_backend(pid)
 FROM pg_stat_activity
@@ -111,7 +128,10 @@ CREATE DATABASE opencontractserver OWNER opencontractsuser;
 \c opencontractserver
 
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 ALTER DATABASE opencontractserver OWNER TO opencontractsuser;
+ALTER SCHEMA public OWNER TO opencontractsuser;
 GRANT ALL ON SCHEMA public TO opencontractsuser;
 SQL
 
