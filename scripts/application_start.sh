@@ -26,48 +26,54 @@ fi
 
 node -v
 npm -v
+echo "========== Install Amazon Linux PostgreSQL 15 and build pgvector =========="
 
-echo "========== Install PostgreSQL 15 PGDG with pgvector =========="
+# Do NOT use PGDG repo on Amazon Linux 2023.
+# Use Amazon Linux packages + build pgvector from source.
 
-# Amazon Linux 2023 does not contain /etc/redhat-release.
-# PGDG repo package expects this file.
-if [ ! -f /etc/redhat-release ]; then
-  echo "Red Hat Enterprise Linux release 9.0 (Plow)" > /etc/redhat-release
+systemctl stop postgresql-15 || true
+systemctl disable postgresql-15 || true
+
+dnf install -y postgresql15 postgresql15-server postgresql15-devel libpq-devel git gcc make
+
+if [ ! -f "/var/lib/pgsql/data/PG_VERSION" ]; then
+  postgresql-setup --initdb
 fi
 
-# Stop/remove Amazon Linux PostgreSQL packages to avoid conflicts
-systemctl stop postgresql || true
-systemctl disable postgresql || true
-
-dnf remove -y postgresql15 postgresql15-server postgresql15-devel postgresql15-private-devel postgresql15-private-libs || true
-
-# Install PGDG repo
-dnf install -y --allowerasing https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-
-# Install PGDG PostgreSQL 15 + pgvector
-dnf install -y --allowerasing postgresql15 postgresql15-server postgresql15-devel pgvector_15
-
-# Initialize PostgreSQL 15 if needed
-if [ ! -f "/var/lib/pgsql/15/data/PG_VERSION" ]; then
-  /usr/pgsql-15/bin/postgresql-15-setup initdb
-fi
-
-systemctl enable --now postgresql-15
-
-echo "========== Verify pgvector files =========="
-test -f /usr/pgsql-15/share/extension/vector.control
-test -f /usr/pgsql-15/lib/vector.so
+systemctl enable --now postgresql
 
 echo "========== Configure PostgreSQL auth =========="
-PG_HBA="/var/lib/pgsql/15/data/pg_hba.conf"
+PG_HBA="/var/lib/pgsql/data/pg_hba.conf"
 
 sed -i -E 's/^(host\s+all\s+all\s+127\.0\.0\.1\/32\s+).*/\1scram-sha-256/' "$PG_HBA"
 sed -i -E 's/^(host\s+all\s+all\s+::1\/128\s+).*/\1scram-sha-256/' "$PG_HBA"
 
-systemctl restart postgresql-15
+systemctl restart postgresql
+
+echo "========== Build and install pgvector =========="
+PG_CONFIG=$(command -v pg_config)
+
+if [ -z "$PG_CONFIG" ]; then
+  echo "ERROR: pg_config not found even after installing libpq-devel"
+  exit 1
+fi
+
+echo "Using PG_CONFIG=$PG_CONFIG"
+"$PG_CONFIG" --version
+
+if [ ! -f "/usr/share/pgsql/extension/vector.control" ]; then
+  rm -rf /tmp/pgvector
+  git clone https://github.com/pgvector/pgvector.git /tmp/pgvector
+  cd /tmp/pgvector
+  make clean || true
+  make PG_CONFIG="$PG_CONFIG"
+  make install PG_CONFIG="$PG_CONFIG"
+fi
+
+cd "$APP_DIR"
 
 echo "========== Create database and pgvector extension =========="
-sudo -u postgres /usr/pgsql-15/bin/psql -v ON_ERROR_STOP=1 <<'SQL'
+sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
 SELECT 'CREATE USER opencontractsuser WITH PASSWORD ''Opencontracts@123'''
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname='opencontractsuser')\gexec
 
@@ -82,7 +88,6 @@ CREATE EXTENSION IF NOT EXISTS vector;
 ALTER DATABASE opencontractserver OWNER TO opencontractsuser;
 GRANT ALL ON SCHEMA public TO opencontractsuser;
 SQL
-
 echo "========== Create environment file =========="
 cat > "$ENV_FILE" <<EOF
 SECRET_KEY=django-insecure-opencontracts-ec2-deploy-key
@@ -128,7 +133,7 @@ echo "========== Backend service =========="
 cat > /etc/systemd/system/opencontracts-backend.service <<EOF
 [Unit]
 Description=OpenContracts Django Backend
-After=network.target postgresql-15.service redis6.service
+After=network.target postgresql.service redis6.service
 
 [Service]
 User=ec2-user
@@ -241,7 +246,7 @@ nginx -t
 systemctl restart nginx
 
 echo "========== Final check =========="
-systemctl is-active --quiet postgresql-15
+systemctl is-active --quiet postgresql
 systemctl is-active --quiet redis6
 systemctl is-active --quiet opencontracts-backend
 systemctl is-active --quiet nginx
