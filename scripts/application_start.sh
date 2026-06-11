@@ -10,7 +10,6 @@ cd "$APP_DIR"
 
 echo "========== Install base packages =========="
 dnf install -y git gcc make nginx redis6
-
 dnf install -y python3.11 python3.11-devel python3.11-pip || dnf install -y python3 python3-devel python3-pip
 
 systemctl enable --now redis6
@@ -28,23 +27,36 @@ fi
 node -v
 npm -v
 
-echo "========== Install PostgreSQL 15 with pgvector =========="
+echo "========== Install PostgreSQL 15 PGDG with pgvector =========="
 
-if [ ! -x "/usr/pgsql-15/bin/psql" ]; then
-  systemctl stop postgresql || true
-  systemctl disable postgresql || true
-
-  dnf remove -y postgresql15 postgresql15-server postgresql15-devel postgresql15-private-devel || true
-
-  dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-  dnf install -y postgresql15-server postgresql15-devel pgvector_15
+# Amazon Linux 2023 does not contain /etc/redhat-release.
+# PGDG repo package expects this file.
+if [ ! -f /etc/redhat-release ]; then
+  echo "Red Hat Enterprise Linux release 9.0 (Plow)" > /etc/redhat-release
 fi
 
+# Stop/remove Amazon Linux PostgreSQL packages to avoid conflicts
+systemctl stop postgresql || true
+systemctl disable postgresql || true
+
+dnf remove -y postgresql15 postgresql15-server postgresql15-devel postgresql15-private-devel postgresql15-private-libs || true
+
+# Install PGDG repo
+dnf install -y --allowerasing https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+
+# Install PGDG PostgreSQL 15 + pgvector
+dnf install -y --allowerasing postgresql15 postgresql15-server postgresql15-devel pgvector_15
+
+# Initialize PostgreSQL 15 if needed
 if [ ! -f "/var/lib/pgsql/15/data/PG_VERSION" ]; then
   /usr/pgsql-15/bin/postgresql-15-setup initdb
 fi
 
 systemctl enable --now postgresql-15
+
+echo "========== Verify pgvector files =========="
+test -f /usr/pgsql-15/share/extension/vector.control
+test -f /usr/pgsql-15/lib/vector.so
 
 echo "========== Configure PostgreSQL auth =========="
 PG_HBA="/var/lib/pgsql/15/data/pg_hba.conf"
@@ -54,7 +66,7 @@ sed -i -E 's/^(host\s+all\s+all\s+::1\/128\s+).*/\1scram-sha-256/' "$PG_HBA"
 
 systemctl restart postgresql-15
 
-echo "========== Create database and pgvector =========="
+echo "========== Create database and pgvector extension =========="
 sudo -u postgres /usr/pgsql-15/bin/psql -v ON_ERROR_STOP=1 <<'SQL'
 SELECT 'CREATE USER opencontractsuser WITH PASSWORD ''Opencontracts@123'''
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname='opencontractsuser')\gexec
