@@ -6,40 +6,75 @@ ENV_FILE="/etc/opencontracts.env"
 EC2_IP="65.0.107.153"
 
 echo "========== ApplicationStart started =========="
-
 cd "$APP_DIR"
 
-echo "========== Install OS packages =========="
-dnf install -y git gcc make python3-devel postgresql15 postgresql15-server postgresql15-devel nginx redis6 nodejs npm || true
+echo "========== Install base packages =========="
+dnf install -y git gcc make curl nginx redis6
 
-systemctl enable postgresql || true
-systemctl start postgresql || true
-systemctl enable redis6 || true
-systemctl start redis6 || true
-systemctl enable nginx || true
-systemctl start nginx || true
+dnf install -y python3.11 python3.11-devel python3.11-pip || dnf install -y python3 python3-devel python3-pip
 
-echo "========== Fix PostgreSQL auth and database =========="
-PG_HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" | xargs)
+systemctl enable --now redis6
+systemctl enable --now nginx
 
-if [ -f "$PG_HBA" ]; then
-  sed -i -E 's/^(host\s+all\s+all\s+127\.0\.0\.1\/32\s+).*/\1scram-sha-256/' "$PG_HBA" || true
-  sed -i -E 's/^(host\s+all\s+all\s+::1\/128\s+).*/\1scram-sha-256/' "$PG_HBA" || true
-  systemctl restart postgresql || true
+echo "========== Install Node 22 =========="
+CURRENT_NODE=$(node -v 2>/dev/null || echo "none")
+
+if [[ "$CURRENT_NODE" != v22* ]]; then
+  dnf remove -y nodejs npm nodejs18 || true
+  curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+  dnf install -y nodejs
 fi
 
-sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='opencontractsuser'" | grep -q 1 || sudo -u postgres psql -c "CREATE USER opencontractsuser WITH PASSWORD 'Opencontracts@123';"
-sudo -u postgres psql -c "ALTER USER opencontractsuser WITH PASSWORD 'Opencontracts@123';"
-sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='opencontractserver'" | grep -q 1 || sudo -u postgres createdb -O opencontractsuser opencontractserver
-sudo -u postgres psql -d opencontractserver -c "ALTER DATABASE opencontractserver OWNER TO opencontractsuser;" || true
-sudo -u postgres psql -d opencontractserver -c "GRANT ALL ON SCHEMA public TO opencontractsuser;" || true
+node -v
+npm -v
+
+echo "========== Install PostgreSQL 15 with pgvector =========="
+
+if [ ! -x "/usr/pgsql-15/bin/psql" ]; then
+  systemctl stop postgresql || true
+  systemctl disable postgresql || true
+
+  dnf remove -y postgresql15 postgresql15-server postgresql15-devel postgresql15-private-devel || true
+
+  dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+  dnf install -y postgresql15-server postgresql15-devel pgvector_15
+fi
+
+if [ ! -f "/var/lib/pgsql/15/data/PG_VERSION" ]; then
+  /usr/pgsql-15/bin/postgresql-15-setup initdb
+fi
+
+systemctl enable --now postgresql-15
+
+echo "========== Configure PostgreSQL auth =========="
+PG_HBA="/var/lib/pgsql/15/data/pg_hba.conf"
+
+sed -i -E 's/^(host\s+all\s+all\s+127\.0\.0\.1\/32\s+).*/\1scram-sha-256/' "$PG_HBA"
+sed -i -E 's/^(host\s+all\s+all\s+::1\/128\s+).*/\1scram-sha-256/' "$PG_HBA"
+
+systemctl restart postgresql-15
+
+echo "========== Create database and pgvector =========="
+sudo -u postgres /usr/pgsql-15/bin/psql -v ON_ERROR_STOP=1 <<'SQL'
+SELECT 'CREATE USER opencontractsuser WITH PASSWORD ''Opencontracts@123'''
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname='opencontractsuser')\gexec
+
+ALTER USER opencontractsuser WITH PASSWORD 'Opencontracts@123';
+
+SELECT 'CREATE DATABASE opencontractserver OWNER opencontractsuser'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname='opencontractserver')\gexec
+
+\c opencontractserver
+
+CREATE EXTENSION IF NOT EXISTS vector;
+ALTER DATABASE opencontractserver OWNER TO opencontractsuser;
+GRANT ALL ON SCHEMA public TO opencontractsuser;
+SQL
 
 echo "========== Create environment file =========="
-SECRET=$(python3 -c 'import secrets; print("django-insecure-"+secrets.token_urlsafe(50))')
-
 cat > "$ENV_FILE" <<EOF
-SECRET_KEY=$SECRET
-DJANGO_SECRET_KEY=$SECRET
+SECRET_KEY=django-insecure-opencontracts-ec2-deploy-key
+DJANGO_SECRET_KEY=django-insecure-opencontracts-ec2-deploy-key
 DEBUG=False
 ALLOWED_HOSTS=$EC2_IP,localhost,127.0.0.1
 DJANGO_ALLOWED_HOSTS=$EC2_IP,localhost,127.0.0.1
@@ -57,10 +92,12 @@ CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/0
 OPENAI_API_KEY=local-test-key
 EOF
 
-echo "========== Backend dependency setup =========="
-sed -i 's/psycopg2==2.9.12/psycopg2-binary==2.9.12/g' requirements/production.txt || true
+echo "========== Backend setup =========="
+sed -i 's/psycopg2==2.9.12/psycopg2-binary==2.9.12/g' requirements/production.txt
 
-python3 -m venv venv
+PYBIN=$(command -v python3.11 || command -v python3)
+
+$PYBIN -m venv venv
 source venv/bin/activate
 
 pip install --upgrade pip wheel setuptools
@@ -71,65 +108,15 @@ set -a
 source "$ENV_FILE"
 set +a
 
-echo "========== Try installing pgvector =========="
-PGVECTOR_READY=0
+python manage.py check
+python manage.py migrate --noinput
+python manage.py collectstatic --noinput
 
-dnf install -y postgresql15-pgvector pgvector || true
-
-if sudo -u postgres psql -d opencontractserver -c "CREATE EXTENSION IF NOT EXISTS vector;" ; then
-  PGVECTOR_READY=1
-else
-  echo "pgvector package not available, trying source build..."
-
-  PG_CONFIG=""
-  for p in $(find /usr /usr/local -name pg_config 2>/dev/null); do
-    if [ -x "$p" ] && "$p" --version >/dev/null 2>&1; then
-      PG_CONFIG="$p"
-      break
-    fi
-  done
-
-  if [ -n "$PG_CONFIG" ]; then
-    echo "Using PG_CONFIG=$PG_CONFIG"
-    rm -rf /tmp/pgvector
-    git clone https://github.com/pgvector/pgvector.git /tmp/pgvector || true
-
-    if [ -d /tmp/pgvector ]; then
-      cd /tmp/pgvector
-      make clean || true
-      if make PG_CONFIG="$PG_CONFIG" && make install PG_CONFIG="$PG_CONFIG"; then
-        if sudo -u postgres psql -d opencontractserver -c "CREATE EXTENSION IF NOT EXISTS vector;" ; then
-          PGVECTOR_READY=1
-        fi
-      fi
-    fi
-  else
-    echo "No valid pg_config found. pgvector source build skipped."
-  fi
-fi
-
-cd "$APP_DIR"
-
-echo "========== Django migrations =========="
-python manage.py check || true
-
-if [ "$PGVECTOR_READY" = "1" ]; then
-  echo "pgvector ready. Running normal migrations..."
-  python manage.py migrate --noinput
-else
-  echo "pgvector not ready. Faking pgvector migration to keep deployment running..."
-  python manage.py migrate documents 0003 --noinput || true
-  python manage.py migrate documents 0004 --fake --noinput || true
-  python manage.py migrate --noinput || true
-fi
-
-python manage.py collectstatic --noinput || true
-
-echo "========== Create backend systemd service =========="
+echo "========== Backend service =========="
 cat > /etc/systemd/system/opencontracts-backend.service <<EOF
 [Unit]
 Description=OpenContracts Django Backend
-After=network.target postgresql.service redis6.service
+After=network.target postgresql-15.service redis6.service
 
 [Service]
 User=ec2-user
@@ -146,7 +133,7 @@ EOF
 
 systemctl daemon-reload
 systemctl enable opencontracts-backend
-systemctl restart opencontracts-backend || true
+systemctl restart opencontracts-backend
 
 echo "========== Frontend setup =========="
 cd "$APP_DIR/frontend"
@@ -162,46 +149,35 @@ VITE_USE_ANALYZERS=true
 VITE_ALLOW_IMPORTS=true
 EOF
 
+cat > .npmrc <<EOF
+legacy-peer-deps=true
+engine-strict=false
+fund=false
+audit=false
+EOF
+
 rm -rf node_modules
-npm cache clean --force || true
+npm cache clean --force
 
-if [ -f package-lock.json ]; then
-  npm install --legacy-peer-deps --include=dev || npm install --force --include=dev || true
-else
-  npm install --legacy-peer-deps --include=dev || npm install --force --include=dev || true
-fi
+export NODE_OPTIONS="--max-old-space-size=2048"
+export npm_config_legacy_peer_deps=true
+export npm_config_include=dev
+export CI=false
 
-npm install typescript vite --save-dev --legacy-peer-deps || true
+npm install --legacy-peer-deps --include=dev
+npm install typescript vite --save-dev --legacy-peer-deps
+npm run build
 
-BUILD_OK=0
-if npm run build; then
-  BUILD_OK=1
-else
-  echo "Frontend build failed. Deployment will keep fallback page instead of failing."
-fi
-
-echo "========== Nginx frontend output =========="
+echo "========== Copy frontend build =========="
 rm -rf /usr/share/nginx/html/*
 
-if [ "$BUILD_OK" = "1" ] && [ -d dist ]; then
+if [ -d dist ]; then
   cp -r dist/* /usr/share/nginx/html/
-elif [ "$BUILD_OK" = "1" ] && [ -d build ]; then
+elif [ -d build ]; then
   cp -r build/* /usr/share/nginx/html/
 else
-  cat > /usr/share/nginx/html/index.html <<EOF
-<!DOCTYPE html>
-<html>
-<head>
-  <title>OpenContracts Cite</title>
-</head>
-<body style="font-family:Arial;padding:40px;">
-  <h1>OpenContracts Cite deployed</h1>
-  <p>AWS CodePipeline and CodeDeploy are working.</p>
-  <p>Backend service is configured on port 8000.</p>
-  <p>Frontend build needs final dependency correction if dashboard is not visible.</p>
-</body>
-</html>
-EOF
+  echo "ERROR: frontend build output not found"
+  exit 1
 fi
 
 echo "========== Nginx config =========="
@@ -252,11 +228,13 @@ EOF
 nginx -t
 systemctl restart nginx
 
-echo "========== Final service check =========="
-systemctl status nginx --no-pager || true
-systemctl status opencontracts-backend --no-pager || true
-curl -I http://127.0.0.1 || true
-curl -I http://127.0.0.1:8000 || true
+echo "========== Final check =========="
+systemctl is-active --quiet postgresql-15
+systemctl is-active --quiet redis6
+systemctl is-active --quiet opencontracts-backend
+systemctl is-active --quiet nginx
 
-echo "========== ApplicationStart completed successfully =========="
-exit 0
+curl -I http://127.0.0.1
+curl -I http://127.0.0.1:8000
+
+echo "========== ApplicationStart completed =========="
